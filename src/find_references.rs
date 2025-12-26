@@ -17,7 +17,8 @@ pub struct ReferenceEdge {
     pub usage: Location,
 }
 
-enum Language {
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Language {
     Python,
     JavaScript,
 }
@@ -37,7 +38,7 @@ where
     let mut inputs = Vec::new();
     for (path, source) in files {
         let path = path.into();
-        let Some(language) = language_for_path(&path) else {
+        let Some(language) = crate::format_router::language_for_path(&path) else {
             continue;
         };
         let Some(tree) = parse_tree(&language, &source) else {
@@ -78,14 +79,6 @@ where
     }
 
     edges.into_iter()
-}
-
-fn language_for_path(path: &Path) -> Option<Language> {
-    match path.extension().and_then(|ext| ext.to_str()) {
-        Some("py") => Some(Language::Python),
-        Some("js") => Some(Language::JavaScript),
-        _ => None,
-    }
 }
 
 fn parse_tree(language: &Language, source: &str) -> Option<Tree> {

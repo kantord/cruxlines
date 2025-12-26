@@ -1,11 +1,10 @@
-use assert_cmd::Command;
 use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::PredicateBooleanExt;
 use predicates::Predicate;
 use predicates::str::contains;
 
 fn run_cli_output() -> String {
-    let mut cmd = cargo_bin_cmd("cruxlines");
+    let mut cmd = cargo_bin_cmd!("cruxlines");
     cmd.args([
         "fixtures/python/main.py",
         "fixtures/python/utils.py",
@@ -69,7 +68,7 @@ fn cli_outputs_scores_in_descending_order() {
 
 #[test]
 fn cli_groups_references_per_definition() {
-    let mut cmd = cargo_bin_cmd("cruxlines");
+    let mut cmd = cargo_bin_cmd!("cruxlines");
     cmd.args([
         "-u",
         "fixtures/python/main.py",
@@ -112,7 +111,7 @@ fn cli_hides_references_without_flag() {
 
 #[test]
 fn cli_shows_references_with_flag() {
-    let mut cmd = cargo_bin_cmd("cruxlines");
+    let mut cmd = cargo_bin_cmd!("cruxlines");
     cmd.args([
         "-u",
         "fixtures/python/main.py",
