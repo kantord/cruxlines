@@ -1,12 +1,15 @@
 fn main() {
-    use petgraph::algo::dijkstra;
+    use petgraph::algo::page_rank;
     use petgraph::graph::Graph;
 
-    let mut g = Graph::<&str, u32>::new();
+    let mut g: Graph<&str, u32> = Graph::new();
     let a = g.add_node("A");
     let b = g.add_node("B");
-    g.add_edge(a, b, 1);
+    let c = g.add_node("C");
+    g.extend_with_edges(&[(a, b), (a, c), (b, c), (c, a)]);
 
-    let paths = dijkstra(&g, a, None, |e| *e.weight());
-    println!("{paths:?}");
+    let ranks = page_rank(&g, 0.85_f64, 20);
+    for node in g.node_indices() {
+        println!("{}: {:.6}", g[node], ranks[node.index()]);
+    }
 }
