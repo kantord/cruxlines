@@ -11,6 +11,8 @@ use cruxlines::scoring::sort_by_rank_desc;
 
 #[derive(Debug, Parser)]
 struct Cli {
+    #[arg(short = 'u', long = "references")]
+    references: bool,
     #[arg(required = true)]
     files: Vec<PathBuf>,
 }
@@ -83,15 +85,26 @@ fn main() {
             let key_b = (&b.path, b.line, b.column, &b.name);
             key_a.cmp(&key_b)
         });
-        println!(
-            "{:.6}\t{}\t{}:{}:{}{}",
-            rank,
-            definition.name,
-            definition.path.display(),
-            definition.line,
-            definition.column,
-            format_usage_list(&usages)
-        );
+        if cli.references {
+            println!(
+                "{:.6}\t{}\t{}:{}:{}{}",
+                rank,
+                definition.name,
+                definition.path.display(),
+                definition.line,
+                definition.column,
+                format_usage_list(&usages)
+            );
+        } else {
+            println!(
+                "{:.6}\t{}\t{}:{}:{}",
+                rank,
+                definition.name,
+                definition.path.display(),
+                definition.line,
+                definition.column
+            );
+        }
     }
 }
 

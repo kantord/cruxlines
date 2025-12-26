@@ -1,10 +1,11 @@
 use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::PredicateBooleanExt;
 use predicates::Predicate;
 use predicates::str::contains;
 
 fn run_cli_output() -> String {
-    let mut cmd = Command::cargo_bin("cruxlines").expect("binary exists");
+    let mut cmd = cargo_bin_cmd("cruxlines");
     cmd.args([
         "fixtures/python/main.py",
         "fixtures/python/utils.py",
@@ -68,7 +69,15 @@ fn cli_outputs_scores_in_descending_order() {
 
 #[test]
 fn cli_groups_references_per_definition() {
-    let output = run_cli_output();
+    let mut cmd = cargo_bin_cmd("cruxlines");
+    cmd.args([
+        "-u",
+        "fixtures/python/main.py",
+        "fixtures/python/utils.py",
+        "fixtures/python/models.py",
+    ]);
+    let output = cmd.assert().success().get_output().stdout.clone();
+    let output = String::from_utf8(output).expect("utf8 output");
     let mut add_lines = 0;
     let mut add_line = String::new();
     for line in output.lines().filter(|line| !line.trim().is_empty()) {
@@ -86,4 +95,39 @@ fn cli_groups_references_per_definition() {
         refs.len() >= 2,
         "expected at least two references for add, got {refs:?}"
     );
+}
+
+#[test]
+fn cli_hides_references_without_flag() {
+    let output = run_cli_output();
+    for line in output.lines().filter(|line| !line.trim().is_empty()) {
+        let parts: Vec<_> = line.split('\t').collect();
+        assert_eq!(
+            parts.len(),
+            3,
+            "expected 3 columns without references flag, got {parts:?}"
+        );
+    }
+}
+
+#[test]
+fn cli_shows_references_with_flag() {
+    let mut cmd = cargo_bin_cmd("cruxlines");
+    cmd.args([
+        "-u",
+        "fixtures/python/main.py",
+        "fixtures/python/utils.py",
+        "fixtures/python/models.py",
+    ]);
+    let output = cmd.assert().success().get_output().stdout.clone();
+    let output = String::from_utf8(output).expect("utf8 output");
+    let mut has_refs = false;
+    for line in output.lines().filter(|line| !line.trim().is_empty()) {
+        let parts: Vec<_> = line.split('\t').collect();
+        if parts.len() > 3 {
+            has_refs = true;
+            break;
+        }
+    }
+    assert!(has_refs, "expected at least one line with references");
 }
