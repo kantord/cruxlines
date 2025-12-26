@@ -5,6 +5,7 @@ use crate::find_references::Language;
 pub const EXTENSION_LANGUAGE_MAP: &[(&str, Language)] = &[
     ("py", Language::Python),
     ("js", Language::JavaScript),
+    ("rs", Language::Rust),
 ];
 
 pub fn language_for_path(path: &Path) -> Option<Language> {
@@ -37,5 +38,11 @@ mod tests {
     fn ignores_unknown_extensions() {
         let lang = language_for_path(&PathBuf::from("file.txt"));
         assert_eq!(lang, None);
+    }
+
+    #[test]
+    fn recognizes_rust_extension() {
+        let lang = language_for_path(&PathBuf::from("file.rs"));
+        assert_eq!(lang, Some(Language::Rust));
     }
 }

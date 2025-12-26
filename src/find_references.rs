@@ -21,6 +21,7 @@ pub struct ReferenceEdge {
 pub enum Language {
     Python,
     JavaScript,
+    Rust,
 }
 
 struct FileInput {
@@ -94,6 +95,11 @@ fn parse_tree(language: &Language, source: &str) -> Option<Tree> {
                 .set_language(&tree_sitter_javascript::LANGUAGE.into())
                 .ok()?;
         }
+        Language::Rust => {
+            parser
+                .set_language(&tree_sitter_rust::LANGUAGE.into())
+                .ok()?;
+        }
     }
     parser.parse(source, None)
 }
@@ -118,6 +124,13 @@ fn collect_definitions(
                 definition_positions,
             ),
             Language::JavaScript => collect_js_definition(
+                path,
+                source,
+                node,
+                definitions,
+                definition_positions,
+            ),
+            Language::Rust => collect_rust_definition(
                 path,
                 source,
                 node,
@@ -173,6 +186,31 @@ fn collect_js_definition(
         "variable_declarator" => {
             if let Some(name) = node.child_by_field_name("name") {
                 collect_identifier_nodes(name, source, |ident| {
+                    record_definition(path, source, ident, definitions, definition_positions);
+                });
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_rust_definition(
+    path: &Path,
+    source: &str,
+    node: Node,
+    definitions: &mut HashMap<String, Vec<Location>>,
+    definition_positions: &mut HashSet<(PathBuf, usize, usize)>,
+) {
+    match node.kind() {
+        "function_item" | "struct_item" | "enum_item" | "const_item" | "static_item"
+        | "type_item" | "trait_item" => {
+            if let Some(name) = node.child_by_field_name("name") {
+                record_definition(path, source, name, definitions, definition_positions);
+            }
+        }
+        "let_declaration" => {
+            if let Some(pattern) = node.child_by_field_name("pattern") {
+                collect_identifier_nodes(pattern, source, |ident| {
                     record_definition(path, source, ident, definitions, definition_positions);
                 });
             }

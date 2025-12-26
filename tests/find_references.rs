@@ -56,3 +56,23 @@ fn finds_javascript_cross_file_references() {
         "expected reference to models.User from index.js"
     );
 }
+
+#[test]
+fn finds_rust_cross_file_references() {
+    let files = vec![
+        read_fixture("fixtures/rust/main.rs"),
+        read_fixture("fixtures/rust/utils.rs"),
+        read_fixture("fixtures/rust/models.rs"),
+    ];
+
+    let edges: Vec<_> = find_references(files).collect();
+
+    assert!(
+        has_edge(&edges, "add", "fixtures/rust/utils.rs", "fixtures/rust/main.rs"),
+        "expected reference to utils::add from main.rs"
+    );
+    assert!(
+        has_edge(&edges, "User", "fixtures/rust/models.rs", "fixtures/rust/main.rs"),
+        "expected reference to models::User from main.rs"
+    );
+}
