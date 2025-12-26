@@ -58,7 +58,7 @@ fn main() {
     for edge in &edges {
         let def_idx = node_index(&mut graph, &mut indices, &edge.definition);
         let use_idx = node_index(&mut graph, &mut indices, &edge.usage);
-        graph.add_edge(def_idx, use_idx, ());
+        graph.add_edge(use_idx, def_idx, ());
     }
     let ranks = page_rank(&graph, 0.85_f64, 20);
 
