@@ -48,3 +48,20 @@ fn cli_outputs_non_uniform_pagerank_scores() {
         "expected non-uniform pagerank scores, got min={min} max={max}"
     );
 }
+
+#[test]
+fn cli_outputs_scores_in_descending_order() {
+    let output = run_cli_output();
+    let mut prev = f64::INFINITY;
+    for line in output.lines().filter(|line| !line.trim().is_empty()) {
+        let Some(score_str) = line.split('\t').next() else {
+            continue;
+        };
+        let score: f64 = score_str.parse().expect("score is f64");
+        assert!(
+            score <= prev + 1e-12,
+            "scores are not in descending order: {score} after {prev}"
+        );
+        prev = score;
+    }
+}

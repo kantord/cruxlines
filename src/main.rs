@@ -62,11 +62,22 @@ fn main() {
     }
     let ranks = page_rank(&graph, 0.85_f64, 20);
 
+    let mut output_rows = Vec::with_capacity(edges.len());
     for edge in edges {
         let def_idx = indices
             .get(&edge.definition)
             .expect("definition index missing");
         let rank = ranks[def_idx.index()];
+        output_rows.push((rank, edge));
+    }
+
+    output_rows.sort_by(|a, b| {
+        b.0
+            .partial_cmp(&a.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    for (rank, edge) in output_rows {
         println!(
             "{:.6}\t{}\t{}:{}:{}\t{}:{}:{}",
             rank,
