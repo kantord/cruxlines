@@ -65,3 +65,25 @@ fn cli_outputs_scores_in_descending_order() {
         prev = score;
     }
 }
+
+#[test]
+fn cli_groups_references_per_definition() {
+    let output = run_cli_output();
+    let mut add_lines = 0;
+    let mut add_line = String::new();
+    for line in output.lines().filter(|line| !line.trim().is_empty()) {
+        let mut parts = line.split('\t');
+        let _score = parts.next().unwrap_or_default();
+        let symbol = parts.next().unwrap_or_default();
+        if symbol == "add" {
+            add_lines += 1;
+            add_line = line.to_string();
+        }
+    }
+    assert_eq!(add_lines, 1, "expected one line for add, got {add_lines}");
+    let refs: Vec<_> = add_line.split('\t').skip(3).collect();
+    assert!(
+        refs.len() >= 2,
+        "expected at least two references for add, got {refs:?}"
+    );
+}

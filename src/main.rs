@@ -62,13 +62,22 @@ fn main() {
     }
     let ranks = page_rank(&graph, 0.85_f64, 20);
 
-    let mut output_rows = Vec::with_capacity(edges.len());
+    let mut grouped: HashMap<cruxlines::find_references::Location, Vec<cruxlines::find_references::Location>> =
+        HashMap::new();
     for edge in edges {
+        grouped
+            .entry(edge.definition.clone())
+            .or_default()
+            .push(edge.usage);
+    }
+
+    let mut output_rows = Vec::with_capacity(grouped.len());
+    for (definition, usages) in grouped {
         let def_idx = indices
-            .get(&edge.definition)
+            .get(&definition)
             .expect("definition index missing");
         let rank = ranks[def_idx.index()];
-        output_rows.push((rank, edge));
+        output_rows.push((rank, definition, usages));
     }
 
     output_rows.sort_by(|a, b| {
@@ -77,17 +86,20 @@ fn main() {
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
-    for (rank, edge) in output_rows {
+    for (rank, definition, mut usages) in output_rows {
+        usages.sort_by(|a, b| {
+            let key_a = (&a.path, a.line, a.column, &a.name);
+            let key_b = (&b.path, b.line, b.column, &b.name);
+            key_a.cmp(&key_b)
+        });
         println!(
-            "{:.6}\t{}\t{}:{}:{}\t{}:{}:{}",
+            "{:.6}\t{}\t{}:{}:{}{}",
             rank,
-            edge.definition.name,
-            edge.definition.path.display(),
-            edge.definition.line,
-            edge.definition.column,
-            edge.usage.path.display(),
-            edge.usage.line,
-            edge.usage.column
+            definition.name,
+            definition.path.display(),
+            definition.line,
+            definition.column,
+            format_usage_list(&usages)
         );
     }
 }
@@ -104,4 +116,18 @@ fn node_index(
         indices.insert(location.clone(), index);
         index
     }
+}
+
+fn format_usage_list(usages: &[cruxlines::find_references::Location]) -> String {
+    let mut out = String::new();
+    for usage in usages {
+        out.push('\t');
+        out.push_str(&format!(
+            "{}:{}:{}",
+            usage.path.display(),
+            usage.line,
+            usage.column
+        ));
+    }
+    out
 }
