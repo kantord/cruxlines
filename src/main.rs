@@ -1,7 +1,10 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process;
 
 use clap::Parser;
+use petgraph::algo::page_rank;
+use petgraph::graph::Graph;
 
 use cruxlines::find_references::{find_references, ReferenceEdge};
 
@@ -50,17 +53,44 @@ fn main() {
         key_a.cmp(&key_b)
     });
 
+    let mut graph: Graph<cruxlines::find_references::Location, ()> = Graph::new();
+    let mut indices = HashMap::new();
+    for edge in &edges {
+        let def_idx = node_index(&mut graph, &mut indices, &edge.definition);
+        let use_idx = node_index(&mut graph, &mut indices, &edge.usage);
+        graph.add_edge(def_idx, use_idx, ());
+    }
+    let ranks = page_rank(&graph, 0.85_f64, 20);
+
     for edge in edges {
+        let def_idx = indices
+            .get(&edge.definition)
+            .expect("definition index missing");
+        let rank = ranks[def_idx.index()];
         println!(
-            "{}:{}:{}:{} -> {}:{}:{}:{}",
+            "{:.6}\t{}\t{}:{}:{}\t{}:{}:{}",
+            rank,
+            edge.definition.name,
             edge.definition.path.display(),
             edge.definition.line,
             edge.definition.column,
-            edge.definition.name,
             edge.usage.path.display(),
             edge.usage.line,
-            edge.usage.column,
-            edge.usage.name
+            edge.usage.column
         );
+    }
+}
+
+fn node_index(
+    graph: &mut Graph<cruxlines::find_references::Location, ()>,
+    indices: &mut HashMap<cruxlines::find_references::Location, petgraph::graph::NodeIndex>,
+    location: &cruxlines::find_references::Location,
+) -> petgraph::graph::NodeIndex {
+    if let Some(index) = indices.get(location) {
+        *index
+    } else {
+        let index = graph.add_node(location.clone());
+        indices.insert(location.clone(), index);
+        index
     }
 }

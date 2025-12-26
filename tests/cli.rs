@@ -14,8 +14,8 @@ fn cli_outputs_reference_edges_for_python_files() {
     cmd.assert()
         .success()
         .stdout(
-            contains("fixtures/python/utils.py")
-                .and(contains("add"))
+            contains("\tadd\t")
+                .and(contains("fixtures/python/utils.py"))
                 .and(contains("fixtures/python/main.py")),
         );
 }
