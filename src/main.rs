@@ -7,6 +7,7 @@ use petgraph::algo::page_rank;
 use petgraph::graph::Graph;
 
 use cruxlines::find_references::{find_references, ReferenceEdge};
+use cruxlines::scoring::sort_by_rank_desc;
 
 #[derive(Debug, Parser)]
 struct Cli {
@@ -80,11 +81,7 @@ fn main() {
         output_rows.push((rank, definition, usages));
     }
 
-    output_rows.sort_by(|a, b| {
-        b.0
-            .partial_cmp(&a.0)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    sort_by_rank_desc(&mut output_rows);
 
     for (rank, definition, mut usages) in output_rows {
         usages.sort_by(|a, b| {
