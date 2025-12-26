@@ -4,9 +4,9 @@ use std::process;
 
 use clap::Parser;
 use petgraph::algo::page_rank;
-use petgraph::graph::Graph;
 
 use cruxlines::find_references::{find_references, ReferenceEdge};
+use cruxlines::graph::build_reference_graph;
 use cruxlines::scoring::sort_by_rank_desc;
 
 #[derive(Debug, Parser)]
@@ -54,13 +54,7 @@ fn main() {
         key_a.cmp(&key_b)
     });
 
-    let mut graph: Graph<cruxlines::find_references::Location, ()> = Graph::new();
-    let mut indices = HashMap::new();
-    for edge in &edges {
-        let def_idx = node_index(&mut graph, &mut indices, &edge.definition);
-        let use_idx = node_index(&mut graph, &mut indices, &edge.usage);
-        graph.add_edge(use_idx, def_idx, ());
-    }
+    let (graph, indices) = build_reference_graph(&edges);
     let ranks = page_rank(&graph, 0.85_f64, 20);
 
     let mut grouped: HashMap<cruxlines::find_references::Location, Vec<cruxlines::find_references::Location>> =
@@ -98,20 +92,6 @@ fn main() {
             definition.column,
             format_usage_list(&usages)
         );
-    }
-}
-
-fn node_index(
-    graph: &mut Graph<cruxlines::find_references::Location, ()>,
-    indices: &mut HashMap<cruxlines::find_references::Location, petgraph::graph::NodeIndex>,
-    location: &cruxlines::find_references::Location,
-) -> petgraph::graph::NodeIndex {
-    if let Some(index) = indices.get(location) {
-        *index
-    } else {
-        let index = graph.add_node(location.clone());
-        indices.insert(location.clone(), index);
-        index
     }
 }
 
