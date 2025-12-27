@@ -19,8 +19,11 @@ struct Cli {
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
 enum EcosystemArg {
+    #[value(alias = "py")]
     Python,
+    #[value(alias = "js", alias = "ts", alias = "tsx")]
     JavaScript,
+    #[value(alias = "rs")]
     Rust,
 }
 

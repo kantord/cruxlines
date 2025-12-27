@@ -62,6 +62,12 @@ Filter by ecosystem (defaults to all):
 cruxlines --ecosystem python .
 ```
 
+Shorthand aliases are supported (`py`, `js`, `ts`, `tsx`, `rs`):
+
+```
+cruxlines -e py .
+```
+
 ## Output format
 
 Each line is tab-separated:

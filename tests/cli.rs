@@ -184,6 +184,31 @@ fn cli_supports_ecosystem_short_flag() {
 }
 
 #[test]
+fn cli_accepts_ecosystem_aliases() {
+    let mut cmd = cargo_bin_cmd!("cruxlines");
+    cmd.args([
+        "--ecosystem",
+        "py",
+        "src/languages/python/fixtures/main.py",
+        "src/languages/python/fixtures/utils.py",
+        "src/languages/python/fixtures/models.py",
+        "src/languages/javascript/fixtures/index.js",
+        "src/languages/javascript/fixtures/utils.js",
+        "src/languages/javascript/fixtures/models.js",
+    ]);
+    let output = cmd.assert().success().get_output().stdout.clone();
+    let output = String::from_utf8(output).expect("utf8 output");
+    assert!(
+        output.contains("src/languages/python/fixtures"),
+        "expected python fixtures in output, got: {output}"
+    );
+    assert!(
+        !output.contains("src/languages/javascript/fixtures"),
+        "expected javascript fixtures to be filtered out, got: {output}"
+    );
+}
+
+#[test]
 fn cli_skips_directory_inputs() {
     let mut cmd = cargo_bin_cmd!("cruxlines");
     cmd.args(["src/languages", "src/languages/python/fixtures/main.py"]);
