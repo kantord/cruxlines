@@ -116,9 +116,10 @@ fn report_error(err: CliIoError) {
 
 fn report_profile(inputs_ms: u128, analysis_ms: u128, stats: &ProfileStats) {
     eprintln!(
-        "profile: inputs={}ms analysis={}ms parse={}ms file_rank={}ms score={}ms definitions={} references={}",
+        "profile: inputs={}ms analysis={}ms frecency={}ms parse={}ms file_rank={}ms score={}ms definitions={} references={}",
         inputs_ms,
         analysis_ms,
+        stats.frecency_ms,
         stats.parse_ms,
         stats.file_rank_ms,
         stats.score_ms,

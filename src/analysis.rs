@@ -16,6 +16,7 @@ pub struct OutputRow {
 #[derive(Debug, Clone)]
 pub struct ProfileStats {
     pub parse_ms: u128,
+    pub frecency_ms: u128,
     pub file_rank_ms: u128,
     pub score_ms: u128,
     pub definitions: usize,
@@ -26,6 +27,8 @@ pub fn cruxlines<I>(inputs: I) -> Vec<OutputRow>
 where
     I: IntoIterator<Item = (PathBuf, String)>,
 {
+    let inputs: Vec<(PathBuf, String)> = inputs.into_iter().collect();
+    let frecency = frecency_scores(&inputs);
     let edges: Vec<ReferenceEdge> = find_references(inputs).collect();
 
     let mut grouped: HashMap<Location, Vec<Location>> = HashMap::new();
@@ -54,7 +57,18 @@ where
             .get(&definition.name)
             .copied()
             .unwrap_or(1) as f64;
-        let local_score = references.len() as f64 / name_count;
+        let weighted_refs: f64 = references
+            .iter()
+            .map(|reference| {
+                let file_rank = file_ranks
+                    .get(&reference.path)
+                    .copied()
+                    .unwrap_or(0.0);
+                let frecency = frecency.get(&reference.path).copied().unwrap_or(1.0);
+                file_rank * frecency
+            })
+            .sum();
+        let local_score = weighted_refs / name_count;
         let file_rank = file_ranks
             .get(&definition.path)
             .copied()
@@ -81,6 +95,11 @@ pub fn cruxlines_profiled<I>(inputs: I) -> (Vec<OutputRow>, ProfileStats)
 where
     I: IntoIterator<Item = (PathBuf, String)>,
 {
+    let start_frecency = std::time::Instant::now();
+    let inputs: Vec<(PathBuf, String)> = inputs.into_iter().collect();
+    let frecency = frecency_scores(&inputs);
+    let frecency_ms = start_frecency.elapsed().as_millis();
+
     let start_parse = std::time::Instant::now();
     let edges: Vec<ReferenceEdge> = find_references(inputs).collect();
     let parse_ms = start_parse.elapsed().as_millis();
@@ -113,7 +132,18 @@ where
             .get(&definition.name)
             .copied()
             .unwrap_or(1) as f64;
-        let local_score = references.len() as f64 / name_count;
+        let weighted_refs: f64 = references
+            .iter()
+            .map(|reference| {
+                let file_rank = file_ranks
+                    .get(&reference.path)
+                    .copied()
+                    .unwrap_or(0.0);
+                let frecency = frecency.get(&reference.path).copied().unwrap_or(1.0);
+                file_rank * frecency
+            })
+            .sum();
+        let local_score = weighted_refs / name_count;
         let file_rank = file_ranks
             .get(&definition.path)
             .copied()
@@ -142,6 +172,7 @@ where
         output_rows,
         ProfileStats {
             parse_ms,
+            frecency_ms,
             file_rank_ms,
             score_ms,
             definitions,
@@ -161,6 +192,31 @@ fn rank_files(grouped: &HashMap<Location, Vec<Location>>) -> HashMap<PathBuf, f6
         out.insert(path, ranks[idx.index()]);
     }
     out
+}
+
+fn frecency_scores(inputs: &[(PathBuf, String)]) -> HashMap<PathBuf, f64> {
+    let Some(repo_root) = find_repo_root(inputs) else {
+        return HashMap::new();
+    };
+    let Ok(scores) = frecenfile::analyze_repo(&repo_root, None, None) else {
+        return HashMap::new();
+    };
+    let mut out = HashMap::new();
+    for (path, score) in scores {
+        out.insert(repo_root.join(path), score);
+    }
+    out
+}
+
+fn find_repo_root(inputs: &[(PathBuf, String)]) -> Option<PathBuf> {
+    let first = inputs.first()?.0.as_path();
+    for ancestor in first.ancestors() {
+        let git_dir = ancestor.join(".git");
+        if git_dir.is_dir() {
+            return Some(ancestor.to_path_buf());
+        }
+    }
+    None
 }
 #[cfg(test)]
 mod tests {
