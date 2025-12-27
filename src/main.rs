@@ -6,7 +6,7 @@ use clap::Parser;
 use petgraph::algo::page_rank;
 
 use cruxlines::find_references::{find_references, ReferenceEdge};
-use cruxlines::graph::build_reference_graph;
+use cruxlines::graph::build_reference_graphs_by_language;
 use cruxlines::scoring::sort_by_rank_desc;
 
 #[derive(Debug, Parser)]
@@ -56,8 +56,14 @@ fn main() {
         key_a.cmp(&key_b)
     });
 
-    let (graph, indices) = build_reference_graph(&edges);
-    let ranks = page_rank(&graph, 0.85_f64, 20);
+    let graphs = build_reference_graphs_by_language(&edges);
+    let mut ranks_by_location: HashMap<cruxlines::find_references::Location, f64> = HashMap::new();
+    for (_language, (graph, indices)) in graphs {
+        let ranks = page_rank(&graph, 0.85_f64, 20);
+        for (location, idx) in indices {
+            ranks_by_location.insert(location, ranks[idx.index()]);
+        }
+    }
 
     let mut grouped: HashMap<cruxlines::find_references::Location, Vec<cruxlines::find_references::Location>> =
         HashMap::new();
@@ -70,10 +76,10 @@ fn main() {
 
     let mut output_rows = Vec::with_capacity(grouped.len());
     for (definition, usages) in grouped {
-        let def_idx = indices
+        let rank = ranks_by_location
             .get(&definition)
-            .expect("definition index missing");
-        let rank = ranks[def_idx.index()];
+            .copied()
+            .unwrap_or(0.0);
         output_rows.push((rank, definition, usages));
     }
 

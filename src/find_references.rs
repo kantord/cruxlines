@@ -17,7 +17,7 @@ pub struct ReferenceEdge {
     pub usage: Location,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Language {
     Python,
     JavaScript,

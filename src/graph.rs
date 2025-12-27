@@ -31,9 +31,28 @@ fn node_index(
     }
 }
 
+pub fn build_reference_graphs_by_language(
+    edges: &[ReferenceEdge],
+) -> HashMap<crate::find_references::Language, (Graph<Location, ()>, HashMap<Location, NodeIndex>)> {
+    let mut grouped: HashMap<crate::find_references::Language, Vec<ReferenceEdge>> = HashMap::new();
+    for edge in edges {
+        let Some(language) = crate::format_router::language_for_path(&edge.definition.path) else {
+            continue;
+        };
+        grouped.entry(language).or_default().push(edge.clone());
+    }
+
+    let mut graphs = HashMap::new();
+    for (language, language_edges) in grouped {
+        graphs.insert(language, build_reference_graph(&language_edges));
+    }
+    graphs
+}
+
 #[cfg(test)]
 mod tests {
     use super::build_reference_graph;
+    use super::build_reference_graphs_by_language;
     use crate::find_references::{Location, ReferenceEdge};
     use std::path::PathBuf;
 
@@ -60,5 +79,46 @@ mod tests {
         let def_idx = indices.get(&def).expect("def node");
         let use_idx = indices.get(&usage).expect("usage node");
         assert!(graph.contains_edge(*use_idx, *def_idx));
+    }
+
+    #[test]
+    fn builds_graphs_per_language() {
+        let py_def = Location {
+            path: PathBuf::from("a.py"),
+            line: 1,
+            column: 1,
+            name: "foo".to_string(),
+        };
+        let py_use = Location {
+            path: PathBuf::from("b.py"),
+            line: 2,
+            column: 1,
+            name: "foo".to_string(),
+        };
+        let rs_def = Location {
+            path: PathBuf::from("a.rs"),
+            line: 1,
+            column: 1,
+            name: "bar".to_string(),
+        };
+        let rs_use = Location {
+            path: PathBuf::from("b.rs"),
+            line: 2,
+            column: 1,
+            name: "bar".to_string(),
+        };
+        let edges = vec![
+            ReferenceEdge {
+                definition: py_def,
+                usage: py_use,
+            },
+            ReferenceEdge {
+                definition: rs_def,
+                usage: rs_use,
+            },
+        ];
+
+        let graphs = build_reference_graphs_by_language(&edges);
+        assert_eq!(graphs.len(), 2);
     }
 }
