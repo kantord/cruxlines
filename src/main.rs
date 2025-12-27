@@ -111,30 +111,7 @@ fn main() {
         inputs.push((path.to_path_buf(), contents));
     }
 
-    let mut edges: Vec<ReferenceEdge> = find_references(inputs).collect();
-    edges.sort_by(|a, b| {
-        let key_a = (
-            &a.definition.path,
-            a.definition.line,
-            a.definition.column,
-            &a.definition.name,
-            &a.usage.path,
-            a.usage.line,
-            a.usage.column,
-            &a.usage.name,
-        );
-        let key_b = (
-            &b.definition.path,
-            b.definition.line,
-            b.definition.column,
-            &b.definition.name,
-            &b.usage.path,
-            b.usage.line,
-            b.usage.column,
-            &b.usage.name,
-        );
-        key_a.cmp(&key_b)
-    });
+    let edges: Vec<ReferenceEdge> = find_references(inputs).collect();
 
     let graphs = build_reference_graphs_by_language(&edges);
     let mut ranks_by_location: HashMap<cruxlines::find_references::Location, f64> = HashMap::new();
