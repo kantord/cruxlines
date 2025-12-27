@@ -194,8 +194,52 @@ fn cli_respects_gitignore_like_ripgrep() {
         "expected output to include utils.py, got: {output}"
     );
     assert!(
+        output.contains("ignored.py"),
+        "expected ignored.py to be included when explicitly passed, got: {output}"
+    );
+
+    let _ = std::fs::remove_file(dir.join("ignored.py"));
+    let _ = std::fs::remove_file(dir.join("main.py"));
+    let _ = std::fs::remove_file(dir.join("utils.py"));
+    let _ = std::fs::remove_file(dir.join(".gitignore"));
+    let _ = std::fs::remove_dir(dir.join(".git"));
+    let _ = std::fs::remove_dir(&dir);
+}
+
+#[test]
+fn cli_skips_gitignored_when_scanning_directory() {
+    let dir = temp_dir_path("cruxlines-ignore-dir");
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    std::fs::create_dir_all(dir.join(".git")).expect("create git dir");
+    std::fs::write(dir.join(".gitignore"), "ignored.py\n").expect("write gitignore");
+    std::fs::write(
+        dir.join("utils.py"),
+        "def add(a, b):\n    return a + b\n",
+    )
+    .expect("write utils");
+    std::fs::write(
+        dir.join("main.py"),
+        "from utils import add\nfrom ignored import ignored\n\nprint(add(1, 2))\nprint(ignored())\n",
+    )
+    .expect("write main");
+    std::fs::write(
+        dir.join("ignored.py"),
+        "def ignored():\n    return 0\n",
+    )
+    .expect("write ignored");
+
+    let mut cmd = cargo_bin_cmd!("cruxlines");
+    cmd.current_dir(&dir);
+    cmd.args(["-u", "."]);
+    let output = cmd.assert().success().get_output().stdout.clone();
+    let output = String::from_utf8(output).expect("utf8 output");
+    assert!(
+        output.contains("utils.py"),
+        "expected output to include utils.py, got: {output}"
+    );
+    assert!(
         !output.contains("ignored.py"),
-        "expected ignored.py to be skipped, got: {output}"
+        "expected ignored.py to be skipped when scanning dir, got: {output}"
     );
 
     let _ = std::fs::remove_file(dir.join("ignored.py"));

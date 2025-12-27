@@ -18,6 +18,13 @@ struct Cli {
 
 fn main() {
     let cli = Cli::parse();
+    let cwd = match std::env::current_dir() {
+        Ok(cwd) => cwd,
+        Err(err) => {
+            eprintln!("cruxlines: failed to read current dir: {err}");
+            process::exit(1);
+        }
+    };
     let inputs = match gather_inputs(cli.files) {
         Ok(inputs) => inputs,
         Err(err) => {
@@ -28,45 +35,52 @@ fn main() {
     let output_rows = cruxlines(inputs);
 
     for row in output_rows {
-        print_row(&row, cli.references);
+        print_row(&row, cli.references, &cwd);
     }
 }
 
-fn print_row(row: &OutputRow, include_references: bool) {
+fn print_row(row: &OutputRow, include_references: bool, cwd: &std::path::Path) {
     if include_references {
         println!(
             "{:.6}\t{}\t{}:{}:{}{}",
             row.rank,
             row.definition.name,
-            row.definition.path.display(),
+            display_path(&row.definition.path, cwd),
             row.definition.line,
             row.definition.column,
-            format_usage_list(&row.references)
+            format_usage_list(&row.references, cwd)
         );
     } else {
         println!(
             "{:.6}\t{}\t{}:{}:{}",
             row.rank,
             row.definition.name,
-            row.definition.path.display(),
+            display_path(&row.definition.path, cwd),
             row.definition.line,
             row.definition.column
         );
     }
 }
 
-fn format_usage_list(usages: &[cruxlines::Location]) -> String {
+fn format_usage_list(usages: &[cruxlines::Location], cwd: &std::path::Path) -> String {
     let mut out = String::new();
     for usage in usages {
         out.push('\t');
         out.push_str(&format!(
             "{}:{}:{}",
-            usage.path.display(),
+            display_path(&usage.path, cwd),
             usage.line,
             usage.column
         ));
     }
     out
+}
+
+fn display_path(path: &std::path::Path, cwd: &std::path::Path) -> String {
+    match path.strip_prefix(cwd) {
+        Ok(rel) => rel.display().to_string(),
+        Err(_) => path.display().to_string(),
+    }
 }
 
 fn report_error(err: CliIoError) {
