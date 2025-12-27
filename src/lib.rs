@@ -1,3 +1,4 @@
+pub mod analysis;
 pub mod find_references;
 pub mod format_router;
 pub mod graph;
