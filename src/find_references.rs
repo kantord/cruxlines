@@ -155,19 +155,39 @@ fn collect_python_definition(
 ) {
     match node.kind() {
         "function_definition" | "class_definition" => {
-            if let Some(name) = node.child_by_field_name("name") {
-                record_definition(path, source, name, definitions, definition_positions);
+            if is_top_level_python(node) {
+                if let Some(name) = node.child_by_field_name("name") {
+                    record_definition(path, source, name, definitions, definition_positions);
+                }
             }
         }
         "assignment" => {
-            if let Some(left) = node.child_by_field_name("left") {
-                collect_identifier_nodes(left, source, |ident| {
-                    record_definition(path, source, ident, definitions, definition_positions);
-                });
+            if is_top_level_python(node) {
+                if let Some(left) = node.child_by_field_name("left") {
+                    collect_identifier_nodes(left, source, |ident| {
+                        record_definition(path, source, ident, definitions, definition_positions);
+                    });
+                }
             }
         }
         _ => {}
     }
+}
+
+fn is_top_level_python(node: Node) -> bool {
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+    if parent.kind() == "module" {
+        return true;
+    }
+    if parent.kind() == "decorated_definition" {
+        return parent
+            .parent()
+            .map(|grand| grand.kind() == "module")
+            .unwrap_or(false);
+    }
+    false
 }
 
 fn collect_js_definition(
@@ -179,19 +199,38 @@ fn collect_js_definition(
 ) {
     match node.kind() {
         "function_declaration" | "class_declaration" => {
-            if let Some(name) = node.child_by_field_name("name") {
-                record_definition(path, source, name, definitions, definition_positions);
+            if is_exported_js(node) {
+                if let Some(name) = node.child_by_field_name("name") {
+                    record_definition(path, source, name, definitions, definition_positions);
+                }
             }
         }
         "variable_declarator" => {
-            if let Some(name) = node.child_by_field_name("name") {
-                collect_identifier_nodes(name, source, |ident| {
-                    record_definition(path, source, ident, definitions, definition_positions);
-                });
+            if is_exported_js(node) {
+                if let Some(name) = node.child_by_field_name("name") {
+                    collect_identifier_nodes(name, source, |ident| {
+                        record_definition(path, source, ident, definitions, definition_positions);
+                    });
+                }
             }
         }
         _ => {}
     }
+}
+
+fn is_exported_js(node: Node) -> bool {
+    let mut current = node;
+    while let Some(parent) = current.parent() {
+        let kind = parent.kind();
+        if kind == "export_statement" || kind == "export_default_declaration" {
+            return true;
+        }
+        if kind == "program" {
+            break;
+        }
+        current = parent;
+    }
+    false
 }
 
 fn collect_rust_definition(
@@ -204,19 +243,20 @@ fn collect_rust_definition(
     match node.kind() {
         "function_item" | "struct_item" | "enum_item" | "const_item" | "static_item"
         | "type_item" | "trait_item" => {
-            if let Some(name) = node.child_by_field_name("name") {
-                record_definition(path, source, name, definitions, definition_positions);
-            }
-        }
-        "let_declaration" => {
-            if let Some(pattern) = node.child_by_field_name("pattern") {
-                collect_identifier_nodes(pattern, source, |ident| {
-                    record_definition(path, source, ident, definitions, definition_positions);
-                });
+            if is_top_level_rust(node) {
+                if let Some(name) = node.child_by_field_name("name") {
+                    record_definition(path, source, name, definitions, definition_positions);
+                }
             }
         }
         _ => {}
     }
+}
+
+fn is_top_level_rust(node: Node) -> bool {
+    node.parent()
+        .map(|parent| parent.kind() == "source_file")
+        .unwrap_or(false)
 }
 
 fn collect_references(

@@ -79,3 +79,37 @@ fn finds_rust_cross_file_references() {
         "expected reference to models::User from main.rs"
     );
 }
+
+#[test]
+fn ignores_non_exported_javascript_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("a.js"),
+            "function foo() { return 1; }\n".to_string(),
+        ),
+        (
+            PathBuf::from("b.js"),
+            "import { foo } from \"./a.js\";\nfoo();\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines(files);
+    assert!(
+        !rows.iter().any(|row| row.definition.name == "foo"),
+        "expected non-exported foo to be ignored"
+    );
+}
+
+#[test]
+fn ignores_nested_python_definitions() {
+    let files = vec![(
+        PathBuf::from("a.py"),
+        "def outer():\n    def inner():\n        return 1\n    return inner()\n".to_string(),
+    )];
+
+    let rows = cruxlines(files);
+    assert!(
+        !rows.iter().any(|row| row.definition.name == "inner"),
+        "expected nested inner to be ignored"
+    );
+}
