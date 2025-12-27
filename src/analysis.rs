@@ -29,8 +29,9 @@ where
     I: IntoIterator<Item = (PathBuf, String)>,
 {
     let inputs: Vec<(PathBuf, String)> = inputs.into_iter().collect();
-    let frecency = frecency_scores(&inputs);
-    let edges: Vec<ReferenceEdge> = find_references(inputs).collect();
+    let (edges, frecency, _frecency_ms) = compute_edges_and_frecency(inputs, |paths| {
+        frecency_scores(&paths)
+    });
 
     let grouped_by_language = group_edges_by_language(edges);
     let capacity: usize = grouped_by_language.values().map(|grouped| grouped.len()).sum();
@@ -58,13 +59,11 @@ pub fn cruxlines_profiled<I>(inputs: I) -> (Vec<OutputRow>, ProfileStats)
 where
     I: IntoIterator<Item = (PathBuf, String)>,
 {
-    let start_frecency = std::time::Instant::now();
     let inputs: Vec<(PathBuf, String)> = inputs.into_iter().collect();
-    let frecency = frecency_scores(&inputs);
-    let frecency_ms = start_frecency.elapsed().as_millis();
-
     let start_parse = std::time::Instant::now();
-    let edges: Vec<ReferenceEdge> = find_references(inputs).collect();
+    let (edges, frecency, frecency_ms) = compute_edges_and_frecency(inputs, |paths| {
+        frecency_scores(&paths)
+    });
     let parse_ms = start_parse.elapsed().as_millis();
 
     let grouped_by_language = group_edges_by_language(edges);
@@ -119,6 +118,28 @@ fn rank_files(grouped: &HashMap<Location, Vec<Location>>) -> HashMap<PathBuf, f6
         out.insert(path, ranks[idx.index()]);
     }
     out
+}
+
+fn compute_edges_and_frecency<F>(
+    inputs: Vec<(PathBuf, String)>,
+    frecency_fn: F,
+) -> (Vec<ReferenceEdge>, HashMap<PathBuf, f64>, u128)
+where
+    F: FnOnce(Vec<PathBuf>) -> HashMap<PathBuf, f64> + Send + 'static,
+{
+    let paths: Vec<PathBuf> = inputs.iter().map(|(path, _)| path.clone()).collect();
+    let frecency_handle = std::thread::spawn(move || {
+        let start = std::time::Instant::now();
+        let frecency = frecency_fn(paths);
+        (frecency, start.elapsed().as_millis())
+    });
+
+    let edges: Vec<ReferenceEdge> = find_references(inputs).collect();
+
+    match frecency_handle.join() {
+        Ok((frecency, frecency_ms)) => (edges, frecency, frecency_ms),
+        Err(_) => (edges, HashMap::new(), 0),
+    }
 }
 
 fn build_rows(
@@ -184,8 +205,8 @@ fn group_edges_by_language(
     grouped_by_language
 }
 
-fn frecency_scores(inputs: &[(PathBuf, String)]) -> HashMap<PathBuf, f64> {
-    let Some(repo_root) = find_repo_root(inputs) else {
+fn frecency_scores(paths: &[PathBuf]) -> HashMap<PathBuf, f64> {
+    let Some(repo_root) = find_repo_root(paths) else {
         return HashMap::new();
     };
     let Ok(scores) = frecenfile::analyze_repo(&repo_root, None, None) else {
@@ -198,8 +219,8 @@ fn frecency_scores(inputs: &[(PathBuf, String)]) -> HashMap<PathBuf, f64> {
     out
 }
 
-fn find_repo_root(inputs: &[(PathBuf, String)]) -> Option<PathBuf> {
-    let first = inputs.first()?.0.as_path();
+fn find_repo_root(paths: &[PathBuf]) -> Option<PathBuf> {
+    let first = paths.first()?.as_path();
     for ancestor in first.ancestors() {
         let git_dir = ancestor.join(".git");
         if git_dir.is_dir() {
@@ -210,7 +231,8 @@ fn find_repo_root(inputs: &[(PathBuf, String)]) -> Option<PathBuf> {
 }
 #[cfg(test)]
 mod tests {
-    use super::cruxlines;
+    use super::{compute_edges_and_frecency, cruxlines};
+    use std::collections::HashMap;
     use std::path::PathBuf;
 
     #[test]
@@ -292,5 +314,24 @@ mod tests {
             .unwrap_or(0.0);
         assert!(a_score > 0.0);
         assert!(b_score > 0.0);
+    }
+
+    #[test]
+    fn frecency_runs_in_background_thread() {
+        let inputs = vec![(
+            PathBuf::from("a.py"),
+            "def foo():\n    pass\n".to_string(),
+        )];
+        let main_thread = std::thread::current().id();
+        let recorded = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let recorded_handle = std::sync::Arc::clone(&recorded);
+
+        let (_edges, _frecency, _ms) = compute_edges_and_frecency(inputs, move |_paths| {
+            *recorded_handle.lock().unwrap() = Some(std::thread::current().id());
+            HashMap::new()
+        });
+
+        let thread_id = recorded.lock().unwrap().expect("thread id recorded");
+        assert_ne!(thread_id, main_thread);
     }
 }
