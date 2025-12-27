@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use crate::find_references::{find_references, Location, ReferenceEdge};
 use crate::graph::build_file_graph;
+use crate::languages::{language_for_path, Language};
 
 #[derive(Debug, Clone)]
 pub struct OutputRow {
@@ -31,56 +32,18 @@ where
     let frecency = frecency_scores(&inputs);
     let edges: Vec<ReferenceEdge> = find_references(inputs).collect();
 
-    let mut grouped: HashMap<Location, Vec<Location>> = HashMap::new();
-    for edge in edges {
-        grouped
-            .entry(edge.definition.clone())
-            .or_default()
-            .push(edge.usage);
-    }
+    let grouped_by_language = group_edges_by_language(edges);
+    let capacity: usize = grouped_by_language.values().map(|grouped| grouped.len()).sum();
+    let mut output_rows = Vec::with_capacity(capacity);
+    for grouped in grouped_by_language.into_values() {
+        let file_ranks = rank_files(&grouped);
 
-    let file_ranks = rank_files(&grouped);
+        let mut name_counts: HashMap<String, usize> = HashMap::new();
+        for definition in grouped.keys() {
+            *name_counts.entry(definition.name.clone()).or_default() += 1;
+        }
 
-    let mut name_counts: HashMap<String, usize> = HashMap::new();
-    for definition in grouped.keys() {
-        *name_counts.entry(definition.name.clone()).or_default() += 1;
-    }
-
-    let mut output_rows = Vec::with_capacity(grouped.len());
-    for (definition, mut references) in grouped {
-        references.sort_by(|a, b| {
-            let key_a = (&a.path, a.line, a.column, &a.name);
-            let key_b = (&b.path, b.line, b.column, &b.name);
-            key_a.cmp(&key_b)
-        });
-        let name_count = name_counts
-            .get(&definition.name)
-            .copied()
-            .unwrap_or(1) as f64;
-        let weighted_refs: f64 = references
-            .iter()
-            .map(|reference| {
-                let file_rank = file_ranks
-                    .get(&reference.path)
-                    .copied()
-                    .unwrap_or(0.0);
-                let frecency = frecency.get(&reference.path).copied().unwrap_or(1.0);
-                file_rank * frecency
-            })
-            .sum();
-        let local_score = weighted_refs / name_count;
-        let file_rank = file_ranks
-            .get(&definition.path)
-            .copied()
-            .unwrap_or(0.0);
-        let rank = local_score * file_rank;
-        output_rows.push(OutputRow {
-            rank,
-            local_score,
-            file_rank,
-            definition,
-            references,
-        });
+        output_rows.extend(build_rows(grouped, &file_ranks, &frecency, &name_counts));
     }
 
     output_rows.sort_by(|a, b| {
@@ -104,58 +67,22 @@ where
     let edges: Vec<ReferenceEdge> = find_references(inputs).collect();
     let parse_ms = start_parse.elapsed().as_millis();
 
-    let start_file_rank = std::time::Instant::now();
-    let mut grouped: HashMap<Location, Vec<Location>> = HashMap::new();
-    for edge in edges {
-        grouped
-            .entry(edge.definition.clone())
-            .or_default()
-            .push(edge.usage);
-    }
-    let file_ranks = rank_files(&grouped);
-    let file_rank_ms = start_file_rank.elapsed().as_millis();
-
+    let grouped_by_language = group_edges_by_language(edges);
+    let capacity: usize = grouped_by_language.values().map(|grouped| grouped.len()).sum();
     let start_score = std::time::Instant::now();
-    let mut name_counts: HashMap<String, usize> = HashMap::new();
-    for definition in grouped.keys() {
-        *name_counts.entry(definition.name.clone()).or_default() += 1;
-    }
+    let mut output_rows = Vec::with_capacity(capacity);
+    let mut file_rank_ms = 0u128;
+    for grouped in grouped_by_language.into_values() {
+        let start_file_rank = std::time::Instant::now();
+        let file_ranks = rank_files(&grouped);
+        file_rank_ms += start_file_rank.elapsed().as_millis();
 
-    let mut output_rows = Vec::with_capacity(grouped.len());
-    for (definition, mut references) in grouped {
-        references.sort_by(|a, b| {
-            let key_a = (&a.path, a.line, a.column, &a.name);
-            let key_b = (&b.path, b.line, b.column, &b.name);
-            key_a.cmp(&key_b)
-        });
-        let name_count = name_counts
-            .get(&definition.name)
-            .copied()
-            .unwrap_or(1) as f64;
-        let weighted_refs: f64 = references
-            .iter()
-            .map(|reference| {
-                let file_rank = file_ranks
-                    .get(&reference.path)
-                    .copied()
-                    .unwrap_or(0.0);
-                let frecency = frecency.get(&reference.path).copied().unwrap_or(1.0);
-                file_rank * frecency
-            })
-            .sum();
-        let local_score = weighted_refs / name_count;
-        let file_rank = file_ranks
-            .get(&definition.path)
-            .copied()
-            .unwrap_or(0.0);
-        let rank = local_score * file_rank;
-        output_rows.push(OutputRow {
-            rank,
-            local_score,
-            file_rank,
-            definition,
-            references,
-        });
+        let mut name_counts: HashMap<String, usize> = HashMap::new();
+        for definition in grouped.keys() {
+            *name_counts.entry(definition.name.clone()).or_default() += 1;
+        }
+
+        output_rows.extend(build_rows(grouped, &file_ranks, &frecency, &name_counts));
     }
 
     output_rows.sort_by(|a, b| {
@@ -194,6 +121,69 @@ fn rank_files(grouped: &HashMap<Location, Vec<Location>>) -> HashMap<PathBuf, f6
     out
 }
 
+fn build_rows(
+    grouped: HashMap<Location, Vec<Location>>,
+    file_ranks: &HashMap<PathBuf, f64>,
+    frecency: &HashMap<PathBuf, f64>,
+    name_counts: &HashMap<String, usize>,
+) -> Vec<OutputRow> {
+    let mut rows = Vec::with_capacity(grouped.len());
+    for (definition, mut references) in grouped {
+        references.sort_by(|a, b| {
+            let key_a = (&a.path, a.line, a.column, &a.name);
+            let key_b = (&b.path, b.line, b.column, &b.name);
+            key_a.cmp(&key_b)
+        });
+        let name_count = name_counts
+            .get(&definition.name)
+            .copied()
+            .unwrap_or(1) as f64;
+        let weighted_refs: f64 = references
+            .iter()
+            .map(|reference| {
+                let file_rank = file_ranks
+                    .get(&reference.path)
+                    .copied()
+                    .unwrap_or(0.0);
+                let frecency = frecency.get(&reference.path).copied().unwrap_or(1.0);
+                file_rank * frecency
+            })
+            .sum();
+        let local_score = weighted_refs / name_count;
+        let file_rank = file_ranks
+            .get(&definition.path)
+            .copied()
+            .unwrap_or(0.0);
+        let rank = local_score * file_rank;
+        rows.push(OutputRow {
+            rank,
+            local_score,
+            file_rank,
+            definition,
+            references,
+        });
+    }
+    rows
+}
+
+fn group_edges_by_language(
+    edges: Vec<ReferenceEdge>,
+) -> HashMap<Language, HashMap<Location, Vec<Location>>> {
+    let mut grouped_by_language: HashMap<Language, HashMap<Location, Vec<Location>>> = HashMap::new();
+    for edge in edges {
+        let Some(language) = language_for_path(&edge.definition.path) else {
+            continue;
+        };
+        grouped_by_language
+            .entry(language)
+            .or_default()
+            .entry(edge.definition)
+            .or_default()
+            .push(edge.usage);
+    }
+    grouped_by_language
+}
+
 fn frecency_scores(inputs: &[(PathBuf, String)]) -> HashMap<PathBuf, f64> {
     let Some(repo_root) = find_repo_root(inputs) else {
         return HashMap::new();
@@ -227,16 +217,16 @@ mod tests {
     fn analyze_paths_produces_rows() {
         let files = vec![
             (
-                PathBuf::from("fixtures/python/main.py"),
-                std::fs::read_to_string("fixtures/python/main.py").expect("read"),
+                PathBuf::from("src/languages/python/fixtures/main.py"),
+                std::fs::read_to_string("src/languages/python/fixtures/main.py").expect("read"),
             ),
             (
-                PathBuf::from("fixtures/python/utils.py"),
-                std::fs::read_to_string("fixtures/python/utils.py").expect("read"),
+                PathBuf::from("src/languages/python/fixtures/utils.py"),
+                std::fs::read_to_string("src/languages/python/fixtures/utils.py").expect("read"),
             ),
             (
-                PathBuf::from("fixtures/python/models.py"),
-                std::fs::read_to_string("fixtures/python/models.py").expect("read"),
+                PathBuf::from("src/languages/python/fixtures/models.py"),
+                std::fs::read_to_string("src/languages/python/fixtures/models.py").expect("read"),
             ),
         ];
         let rows = cruxlines(files);

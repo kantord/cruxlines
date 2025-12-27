@@ -20,22 +20,26 @@ fn has_reference(rows: &[OutputRow], def_name: &str, def_path_ends: &str, use_pa
     })
 }
 
+fn extension(path: &Path) -> Option<String> {
+    path.extension().and_then(|ext| ext.to_str()).map(|ext| ext.to_string())
+}
+
 #[test]
 fn finds_python_cross_file_references() {
     let files = vec![
-        read_fixture("fixtures/python/main.py"),
-        read_fixture("fixtures/python/utils.py"),
-        read_fixture("fixtures/python/models.py"),
+        read_fixture("src/languages/python/fixtures/main.py"),
+        read_fixture("src/languages/python/fixtures/utils.py"),
+        read_fixture("src/languages/python/fixtures/models.py"),
     ];
 
     let rows = cruxlines(files);
 
     assert!(
-        has_reference(&rows, "add", "fixtures/python/utils.py", "fixtures/python/main.py"),
+        has_reference(&rows, "add", "src/languages/python/fixtures/utils.py", "src/languages/python/fixtures/main.py"),
         "expected reference to utils.add from main.py"
     );
     assert!(
-        has_reference(&rows, "User", "fixtures/python/models.py", "fixtures/python/main.py"),
+        has_reference(&rows, "User", "src/languages/python/fixtures/models.py", "src/languages/python/fixtures/main.py"),
         "expected reference to models.User from main.py"
     );
 }
@@ -43,19 +47,19 @@ fn finds_python_cross_file_references() {
 #[test]
 fn finds_javascript_cross_file_references() {
     let files = vec![
-        read_fixture("fixtures/javascript/index.js"),
-        read_fixture("fixtures/javascript/utils.js"),
-        read_fixture("fixtures/javascript/models.js"),
+        read_fixture("src/languages/javascript/fixtures/index.js"),
+        read_fixture("src/languages/javascript/fixtures/utils.js"),
+        read_fixture("src/languages/javascript/fixtures/models.js"),
     ];
 
     let rows = cruxlines(files);
 
     assert!(
-        has_reference(&rows, "add", "fixtures/javascript/utils.js", "fixtures/javascript/index.js"),
+        has_reference(&rows, "add", "src/languages/javascript/fixtures/utils.js", "src/languages/javascript/fixtures/index.js"),
         "expected reference to utils.add from index.js"
     );
     assert!(
-        has_reference(&rows, "User", "fixtures/javascript/models.js", "fixtures/javascript/index.js"),
+        has_reference(&rows, "User", "src/languages/javascript/fixtures/models.js", "src/languages/javascript/fixtures/index.js"),
         "expected reference to models.User from index.js"
     );
 }
@@ -63,21 +67,48 @@ fn finds_javascript_cross_file_references() {
 #[test]
 fn finds_rust_cross_file_references() {
     let files = vec![
-        read_fixture("fixtures/rust/main.rs"),
-        read_fixture("fixtures/rust/utils.rs"),
-        read_fixture("fixtures/rust/models.rs"),
+        read_fixture("src/languages/rust/fixtures/main.rs"),
+        read_fixture("src/languages/rust/fixtures/utils.rs"),
+        read_fixture("src/languages/rust/fixtures/models.rs"),
     ];
 
     let rows = cruxlines(files);
 
     assert!(
-        has_reference(&rows, "add", "fixtures/rust/utils.rs", "fixtures/rust/main.rs"),
+        has_reference(&rows, "add", "src/languages/rust/fixtures/utils.rs", "src/languages/rust/fixtures/main.rs"),
         "expected reference to utils::add from main.rs"
     );
     assert!(
-        has_reference(&rows, "User", "fixtures/rust/models.rs", "fixtures/rust/main.rs"),
+        has_reference(&rows, "User", "src/languages/rust/fixtures/models.rs", "src/languages/rust/fixtures/main.rs"),
         "expected reference to models::User from main.rs"
     );
+}
+
+#[test]
+fn does_not_cross_language_references() {
+    let files = vec![
+        (
+            PathBuf::from("a.py"),
+            "def add():\n    return 1\n\nadd()\n".to_string(),
+        ),
+        (
+            PathBuf::from("b.rs"),
+            "fn add() -> i32 { 1 }\n\nfn main() {\n    add();\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines(files);
+    for row in &rows {
+        let def_ext = extension(&row.definition.path);
+        for reference in &row.references {
+            let ref_ext = extension(&reference.path);
+            assert_eq!(
+                def_ext, ref_ext,
+                "expected references to stay within language, got {:?} -> {:?}",
+                row.definition.path, reference.path
+            );
+        }
+    }
 }
 
 #[test]

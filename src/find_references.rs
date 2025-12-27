@@ -17,17 +17,10 @@ pub struct ReferenceEdge {
     pub usage: Location,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Language {
-    Python,
-    JavaScript,
-    Rust,
-}
-
 struct FileInput {
     path: PathBuf,
     source: String,
-    language: Language,
+    language: crate::languages::Language,
     tree: Tree,
 }
 
@@ -36,78 +29,68 @@ where
     I: IntoIterator<Item = (P, String)>,
     P: Into<PathBuf>,
 {
-    let mut inputs = Vec::new();
+    let mut inputs_by_language: HashMap<crate::languages::Language, Vec<FileInput>> = HashMap::new();
     for (path, source) in files {
         let path = path.into();
-        let Some(language) = crate::format_router::language_for_path(&path) else {
+        let Some(language) = crate::languages::language_for_path(&path) else {
             continue;
         };
         let Some(tree) = parse_tree(&language, &source) else {
             continue;
         };
-        inputs.push(FileInput {
-            path,
-            source,
-            language,
-            tree,
-        });
-    }
-
-    let mut definitions: HashMap<String, Vec<Location>> = HashMap::new();
-    let mut definition_positions: HashSet<(PathBuf, usize, usize)> = HashSet::new();
-
-    for input in &inputs {
-        collect_definitions(
-            &input.path,
-            &input.source,
-            &input.language,
-            &input.tree,
-            &mut definitions,
-            &mut definition_positions,
-        );
+        inputs_by_language
+            .entry(language)
+            .or_default()
+            .push(FileInput {
+                path,
+                source,
+                language,
+                tree,
+            });
     }
 
     let mut edges = Vec::new();
-    for input in &inputs {
-        collect_references(
-            &input.path,
-            &input.source,
-            &input.tree,
-            &definitions,
-            &definition_positions,
-            &mut edges,
-        );
+    for inputs in inputs_by_language.values() {
+        let mut definitions: HashMap<String, Vec<Location>> = HashMap::new();
+        let mut definition_positions: HashSet<(PathBuf, usize, usize)> = HashSet::new();
+
+        for input in inputs {
+            collect_definitions(
+                &input.path,
+                &input.source,
+                &input.language,
+                &input.tree,
+                &mut definitions,
+                &mut definition_positions,
+            );
+        }
+
+        for input in inputs {
+            collect_references(
+                &input.path,
+                &input.source,
+                &input.tree,
+                &definitions,
+                &definition_positions,
+                &mut edges,
+            );
+        }
     }
 
     edges.into_iter()
 }
 
-fn parse_tree(language: &Language, source: &str) -> Option<Tree> {
+fn parse_tree(language: &crate::languages::Language, source: &str) -> Option<Tree> {
     let mut parser = Parser::new();
-    match language {
-        Language::Python => {
-            parser
-                .set_language(&tree_sitter_python::LANGUAGE.into())
-                .ok()?;
-        }
-        Language::JavaScript => {
-            parser
-                .set_language(&tree_sitter_javascript::LANGUAGE.into())
-                .ok()?;
-        }
-        Language::Rust => {
-            parser
-                .set_language(&tree_sitter_rust::LANGUAGE.into())
-                .ok()?;
-        }
-    }
+    let ts_language = crate::languages::tree_sitter_language(*language);
+    parser.set_language(&ts_language).ok()?;
     parser.parse(source, None)
 }
 
 fn collect_definitions(
     path: &Path,
     source: &str,
-    language: &Language,
+    language: &crate::languages::Language,
     tree: &Tree,
     definitions: &mut HashMap<String, Vec<Location>>,
     definition_positions: &mut HashSet<(PathBuf, usize, usize)>,
@@ -116,21 +99,23 @@ fn collect_definitions(
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
         match language {
-            Language::Python => collect_python_definition(
+            crate::languages::Language::Python => crate::languages::python::collect_definition(
                 path,
                 source,
                 node,
                 definitions,
                 definition_positions,
             ),
-            Language::JavaScript => collect_js_definition(
-                path,
-                source,
-                node,
-                definitions,
-                definition_positions,
-            ),
-            Language::Rust => collect_rust_definition(
+            crate::languages::Language::JavaScript => {
+                crate::languages::javascript::collect_definition(
+                    path,
+                    source,
+                    node,
+                    definitions,
+                    definition_positions,
+                )
+            }
+            crate::languages::Language::Rust => crate::languages::rust::collect_definition(
                 path,
                 source,
                 node,
@@ -144,119 +129,6 @@ fn collect_definitions(
             }
         }
     }
-}
-
-fn collect_python_definition(
-    path: &Path,
-    source: &str,
-    node: Node,
-    definitions: &mut HashMap<String, Vec<Location>>,
-    definition_positions: &mut HashSet<(PathBuf, usize, usize)>,
-) {
-    match node.kind() {
-        "function_definition" | "class_definition" => {
-            if is_top_level_python(node) {
-                if let Some(name) = node.child_by_field_name("name") {
-                    record_definition(path, source, name, definitions, definition_positions);
-                }
-            }
-        }
-        "assignment" => {
-            if is_top_level_python(node) {
-                if let Some(left) = node.child_by_field_name("left") {
-                    collect_identifier_nodes(left, source, |ident| {
-                        record_definition(path, source, ident, definitions, definition_positions);
-                    });
-                }
-            }
-        }
-        _ => {}
-    }
-}
-
-fn is_top_level_python(node: Node) -> bool {
-    let Some(parent) = node.parent() else {
-        return false;
-    };
-    if parent.kind() == "module" {
-        return true;
-    }
-    if parent.kind() == "decorated_definition" {
-        return parent
-            .parent()
-            .map(|grand| grand.kind() == "module")
-            .unwrap_or(false);
-    }
-    false
-}
-
-fn collect_js_definition(
-    path: &Path,
-    source: &str,
-    node: Node,
-    definitions: &mut HashMap<String, Vec<Location>>,
-    definition_positions: &mut HashSet<(PathBuf, usize, usize)>,
-) {
-    match node.kind() {
-        "function_declaration" | "class_declaration" => {
-            if is_exported_js(node) {
-                if let Some(name) = node.child_by_field_name("name") {
-                    record_definition(path, source, name, definitions, definition_positions);
-                }
-            }
-        }
-        "variable_declarator" => {
-            if is_exported_js(node) {
-                if let Some(name) = node.child_by_field_name("name") {
-                    collect_identifier_nodes(name, source, |ident| {
-                        record_definition(path, source, ident, definitions, definition_positions);
-                    });
-                }
-            }
-        }
-        _ => {}
-    }
-}
-
-fn is_exported_js(node: Node) -> bool {
-    let mut current = node;
-    while let Some(parent) = current.parent() {
-        let kind = parent.kind();
-        if kind == "export_statement" || kind == "export_default_declaration" {
-            return true;
-        }
-        if kind == "program" {
-            break;
-        }
-        current = parent;
-    }
-    false
-}
-
-fn collect_rust_definition(
-    path: &Path,
-    source: &str,
-    node: Node,
-    definitions: &mut HashMap<String, Vec<Location>>,
-    definition_positions: &mut HashSet<(PathBuf, usize, usize)>,
-) {
-    match node.kind() {
-        "function_item" | "struct_item" | "enum_item" | "const_item" | "static_item"
-        | "type_item" | "trait_item" => {
-            if is_top_level_rust(node) {
-                if let Some(name) = node.child_by_field_name("name") {
-                    record_definition(path, source, name, definitions, definition_positions);
-                }
-            }
-        }
-        _ => {}
-    }
-}
-
-fn is_top_level_rust(node: Node) -> bool {
-    node.parent()
-        .map(|parent| parent.kind() == "source_file")
-        .unwrap_or(false)
 }
 
 fn collect_references(
@@ -299,7 +171,7 @@ fn collect_references(
     }
 }
 
-fn record_definition(
+pub(crate) fn record_definition(
     path: &Path,
     source: &str,
     name_node: Node,
@@ -324,7 +196,7 @@ fn record_definition(
     definition_positions.insert((path.to_path_buf(), line, column));
 }
 
-fn collect_identifier_nodes<F>(node: Node, source: &str, mut on_ident: F)
+pub(crate) fn collect_identifier_nodes<F>(node: Node, source: &str, mut on_ident: F)
 where
     F: FnMut(Node),
 {

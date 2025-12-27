@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use ignore::WalkBuilder;
 
@@ -34,7 +34,7 @@ where
         if !file.is_file() {
             continue;
         }
-        if !is_supported_path(&file) {
+        if !cruxlines::is_supported_path(&file) {
             continue;
         }
         let bytes = std::fs::read(&file)
@@ -73,7 +73,7 @@ where
                 continue;
             }
             let path = entry.path();
-            if !is_supported_path(path) {
+            if !cruxlines::is_supported_path(path) {
                 continue;
             }
             let bytes = std::fs::read(path)
@@ -94,9 +94,4 @@ where
     Ok(inputs)
 }
 
-fn is_supported_path(path: &Path) -> bool {
-    match path.extension().and_then(|ext| ext.to_str()) {
-        Some("py") | Some("js") | Some("rs") => true,
-        _ => false,
-    }
-}
+ 

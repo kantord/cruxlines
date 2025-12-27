@@ -6,9 +6,9 @@ use predicates::str::contains;
 fn run_cli_output() -> String {
     let mut cmd = cargo_bin_cmd!("cruxlines");
     cmd.args([
-        "fixtures/python/main.py",
-        "fixtures/python/utils.py",
-        "fixtures/python/models.py",
+        "src/languages/python/fixtures/main.py",
+        "src/languages/python/fixtures/utils.py",
+        "src/languages/python/fixtures/models.py",
     ]);
     let output = cmd.assert().success().get_output().stdout.clone();
     String::from_utf8(output).expect("utf8 output")
@@ -19,8 +19,8 @@ fn cli_outputs_reference_edges_for_python_files() {
     let output = run_cli_output();
     assert!(
         contains("\tadd\t")
-            .and(contains("fixtures/python/utils.py"))
-            .and(contains("fixtures/python/main.py"))
+            .and(contains("src/languages/python/fixtures/utils.py"))
+            .and(contains("src/languages/python/fixtures/main.py"))
             .eval(&output),
         "output did not include expected edge: {output}"
     );
@@ -71,9 +71,9 @@ fn cli_groups_references_per_definition() {
     let mut cmd = cargo_bin_cmd!("cruxlines");
     cmd.args([
         "-u",
-        "fixtures/python/main.py",
-        "fixtures/python/utils.py",
-        "fixtures/python/models.py",
+        "src/languages/python/fixtures/main.py",
+        "src/languages/python/fixtures/utils.py",
+        "src/languages/python/fixtures/models.py",
     ]);
     let output = cmd.assert().success().get_output().stdout.clone();
     let output = String::from_utf8(output).expect("utf8 output");
@@ -116,9 +116,9 @@ fn cli_shows_references_with_flag() {
     let mut cmd = cargo_bin_cmd!("cruxlines");
     cmd.args([
         "-u",
-        "fixtures/python/main.py",
-        "fixtures/python/utils.py",
-        "fixtures/python/models.py",
+        "src/languages/python/fixtures/main.py",
+        "src/languages/python/fixtures/utils.py",
+        "src/languages/python/fixtures/models.py",
     ]);
     let output = cmd.assert().success().get_output().stdout.clone();
     let output = String::from_utf8(output).expect("utf8 output");
@@ -136,7 +136,7 @@ fn cli_shows_references_with_flag() {
 #[test]
 fn cli_skips_directory_inputs() {
     let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args(["fixtures", "fixtures/python/main.py"]);
+    cmd.args(["src/languages", "src/languages/python/fixtures/main.py"]);
     cmd.assert().success();
 }
 
@@ -146,7 +146,7 @@ fn cli_skips_unknown_extension_inputs() {
     std::fs::write(&tmp_path, "not source").expect("write temp file");
 
     let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args([tmp_path.to_str().unwrap(), "fixtures/python/main.py"]);
+    cmd.args([tmp_path.to_str().unwrap(), "src/languages/python/fixtures/main.py"]);
     cmd.assert().success();
 
     let _ = std::fs::remove_file(tmp_path);
@@ -158,7 +158,7 @@ fn cli_skips_non_utf8_inputs() {
     std::fs::write(&tmp_path, [0xff, 0xfe, 0xfd]).expect("write temp file");
 
     let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args([tmp_path.to_str().unwrap(), "fixtures/python/main.py"]);
+    cmd.args([tmp_path.to_str().unwrap(), "src/languages/python/fixtures/main.py"]);
     cmd.assert().success();
 
     let _ = std::fs::remove_file(tmp_path);
@@ -255,7 +255,7 @@ fn cli_skips_gitignored_when_scanning_directory() {
 #[test]
 fn cli_profile_flag_outputs_stats() {
     let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args(["--profile", "fixtures/python/main.py"]);
+    cmd.args(["--profile", "src/languages/python/fixtures/main.py"]);
     let output = cmd.assert().success().get_output().stderr.clone();
     let output = String::from_utf8(output).expect("utf8 output");
     assert!(
