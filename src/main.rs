@@ -21,6 +21,9 @@ fn main() {
     let cli = Cli::parse();
     let mut inputs = Vec::with_capacity(cli.files.len());
     for path in &cli.files {
+        if path.is_dir() {
+            continue;
+        }
         let contents = match std::fs::read_to_string(path) {
             Ok(contents) => contents,
             Err(err) => {

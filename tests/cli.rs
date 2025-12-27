@@ -130,3 +130,10 @@ fn cli_shows_references_with_flag() {
     }
     assert!(has_refs, "expected at least one line with references");
 }
+
+#[test]
+fn cli_skips_directory_inputs() {
+    let mut cmd = cargo_bin_cmd!("cruxlines");
+    cmd.args(["fixtures", "fixtures/python/main.py"]);
+    cmd.assert().success();
+}
