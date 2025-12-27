@@ -252,18 +252,6 @@ fn cli_skips_gitignored_when_scanning_directory() {
     let _ = std::fs::remove_dir(&dir);
 }
 
-#[test]
-fn cli_profile_flag_outputs_stats() {
-    let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args(["--profile", "src/languages/python/fixtures/main.py"]);
-    let output = cmd.assert().success().get_output().stderr.clone();
-    let output = String::from_utf8(output).expect("utf8 output");
-    assert!(
-        output.contains("profile:"),
-        "expected profile output, got: {output}"
-    );
-}
-
 fn temp_file_path(name: &str) -> std::path::PathBuf {
     let mut path = std::env::temp_dir();
     let nanos = std::time::SystemTime::now()

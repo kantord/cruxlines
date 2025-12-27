@@ -3,7 +3,7 @@ mod find_references;
 mod graph;
 mod languages;
 
-pub use analysis::{cruxlines, cruxlines_profiled, OutputRow, ProfileStats};
+pub use analysis::{cruxlines, OutputRow};
 pub use find_references::Location;
 
 #[doc(hidden)]

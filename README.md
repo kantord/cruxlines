@@ -56,12 +56,6 @@ Show reference locations:
 cruxlines -u .
 ```
 
-Profile timings:
-
-```
-cruxlines --profile .
-```
-
 ## Output format
 
 Each line is tab-separated:

@@ -14,24 +14,12 @@ pub struct OutputRow {
     pub references: Vec<Location>,
 }
 
-#[derive(Debug, Clone)]
-pub struct ProfileStats {
-    pub parse_ms: u128,
-    pub frecency_ms: u128,
-    pub file_rank_ms: u128,
-    pub score_ms: u128,
-    pub definitions: usize,
-    pub references: usize,
-}
-
 pub fn cruxlines<I>(inputs: I) -> Vec<OutputRow>
 where
     I: IntoIterator<Item = (PathBuf, String)>,
 {
     let inputs: Vec<(PathBuf, String)> = inputs.into_iter().collect();
-    let (edges, frecency, _frecency_ms) = compute_edges_and_frecency(inputs, |paths| {
-        frecency_scores(&paths)
-    });
+    let (edges, frecency) = compute_edges_and_frecency(inputs, |paths| frecency_scores(&paths));
 
     let grouped_by_language = group_edges_by_language(edges);
     let capacity: usize = grouped_by_language.values().map(|grouped| grouped.len()).sum();
@@ -55,58 +43,6 @@ where
     output_rows
 }
 
-pub fn cruxlines_profiled<I>(inputs: I) -> (Vec<OutputRow>, ProfileStats)
-where
-    I: IntoIterator<Item = (PathBuf, String)>,
-{
-    let inputs: Vec<(PathBuf, String)> = inputs.into_iter().collect();
-    let start_parse = std::time::Instant::now();
-    let (edges, frecency, frecency_ms) = compute_edges_and_frecency(inputs, |paths| {
-        frecency_scores(&paths)
-    });
-    let parse_ms = start_parse.elapsed().as_millis();
-
-    let grouped_by_language = group_edges_by_language(edges);
-    let capacity: usize = grouped_by_language.values().map(|grouped| grouped.len()).sum();
-    let start_score = std::time::Instant::now();
-    let mut output_rows = Vec::with_capacity(capacity);
-    let mut file_rank_ms = 0u128;
-    for grouped in grouped_by_language.into_values() {
-        let start_file_rank = std::time::Instant::now();
-        let file_ranks = rank_files(&grouped);
-        file_rank_ms += start_file_rank.elapsed().as_millis();
-
-        let mut name_counts: HashMap<String, usize> = HashMap::new();
-        for definition in grouped.keys() {
-            *name_counts.entry(definition.name.clone()).or_default() += 1;
-        }
-
-        output_rows.extend(build_rows(grouped, &file_ranks, &frecency, &name_counts));
-    }
-
-    output_rows.sort_by(|a, b| {
-        b.rank
-            .partial_cmp(&a.rank)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    let score_ms = start_score.elapsed().as_millis();
-
-    let definitions = output_rows.len();
-    let references = output_rows.iter().map(|row| row.references.len()).sum();
-
-    (
-        output_rows,
-        ProfileStats {
-            parse_ms,
-            frecency_ms,
-            file_rank_ms,
-            score_ms,
-            definitions,
-            references,
-        },
-    )
-}
-
 fn rank_files(grouped: &HashMap<Location, Vec<Location>>) -> HashMap<PathBuf, f64> {
     let (graph, indices) = build_file_graph(grouped);
     if graph.node_count() == 0 {
@@ -123,22 +59,18 @@ fn rank_files(grouped: &HashMap<Location, Vec<Location>>) -> HashMap<PathBuf, f6
 fn compute_edges_and_frecency<F>(
     inputs: Vec<(PathBuf, String)>,
     frecency_fn: F,
-) -> (Vec<ReferenceEdge>, HashMap<PathBuf, f64>, u128)
+) -> (Vec<ReferenceEdge>, HashMap<PathBuf, f64>)
 where
     F: FnOnce(Vec<PathBuf>) -> HashMap<PathBuf, f64> + Send + 'static,
 {
     let paths: Vec<PathBuf> = inputs.iter().map(|(path, _)| path.clone()).collect();
-    let frecency_handle = std::thread::spawn(move || {
-        let start = std::time::Instant::now();
-        let frecency = frecency_fn(paths);
-        (frecency, start.elapsed().as_millis())
-    });
+    let frecency_handle = std::thread::spawn(move || frecency_fn(paths));
 
     let edges: Vec<ReferenceEdge> = find_references(inputs).collect();
 
     match frecency_handle.join() {
-        Ok((frecency, frecency_ms)) => (edges, frecency, frecency_ms),
-        Err(_) => (edges, HashMap::new(), 0),
+        Ok(frecency) => (edges, frecency),
+        Err(_) => (edges, HashMap::new()),
     }
 }
 
@@ -326,7 +258,7 @@ mod tests {
         let recorded = std::sync::Arc::new(std::sync::Mutex::new(None));
         let recorded_handle = std::sync::Arc::clone(&recorded);
 
-        let (_edges, _frecency, _ms) = compute_edges_and_frecency(inputs, move |_paths| {
+        let (_edges, _frecency) = compute_edges_and_frecency(inputs, move |_paths| {
             *recorded_handle.lock().unwrap() = Some(std::thread::current().id());
             HashMap::new()
         });
