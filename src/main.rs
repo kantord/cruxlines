@@ -58,8 +58,10 @@ fn main() {
 fn print_row(row: &OutputRow, include_references: bool, cwd: &std::path::Path) {
     if include_references {
         println!(
-            "{:.6}\t{}\t{}:{}:{}{}",
+            "{:.6}\t{:.6}\t{:.6}\t{}\t{}:{}:{}{}",
             row.rank,
+            row.local_score,
+            row.file_rank,
             row.definition.name,
             display_path(&row.definition.path, cwd),
             row.definition.line,
@@ -68,8 +70,10 @@ fn print_row(row: &OutputRow, include_references: bool, cwd: &std::path::Path) {
         );
     } else {
         println!(
-            "{:.6}\t{}\t{}:{}:{}",
+            "{:.6}\t{:.6}\t{:.6}\t{}\t{}:{}:{}",
             row.rank,
+            row.local_score,
+            row.file_rank,
             row.definition.name,
             display_path(&row.definition.path, cwd),
             row.definition.line,
@@ -112,10 +116,11 @@ fn report_error(err: CliIoError) {
 
 fn report_profile(inputs_ms: u128, analysis_ms: u128, stats: &ProfileStats) {
     eprintln!(
-        "profile: inputs={}ms analysis={}ms parse={}ms score={}ms definitions={} references={}",
+        "profile: inputs={}ms analysis={}ms parse={}ms file_rank={}ms score={}ms definitions={} references={}",
         inputs_ms,
         analysis_ms,
         stats.parse_ms,
+        stats.file_rank_ms,
         stats.score_ms,
         stats.definitions,
         stats.references

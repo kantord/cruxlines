@@ -82,6 +82,8 @@ fn cli_groups_references_per_definition() {
     for line in output.lines().filter(|line| !line.trim().is_empty()) {
         let mut parts = line.split('\t');
         let _score = parts.next().unwrap_or_default();
+        let _local = parts.next().unwrap_or_default();
+        let _file_rank = parts.next().unwrap_or_default();
         let symbol = parts.next().unwrap_or_default();
         if symbol == "add" {
             add_lines += 1;
@@ -89,7 +91,7 @@ fn cli_groups_references_per_definition() {
         }
     }
     assert_eq!(add_lines, 1, "expected one line for add, got {add_lines}");
-    let refs: Vec<_> = add_line.split('\t').skip(3).collect();
+    let refs: Vec<_> = add_line.split('\t').skip(5).collect();
     assert!(
         refs.len() >= 2,
         "expected at least two references for add, got {refs:?}"
@@ -103,8 +105,8 @@ fn cli_hides_references_without_flag() {
         let parts: Vec<_> = line.split('\t').collect();
         assert_eq!(
             parts.len(),
-            3,
-            "expected 3 columns without references flag, got {parts:?}"
+            5,
+            "expected 5 columns without references flag, got {parts:?}"
         );
     }
 }
@@ -123,7 +125,7 @@ fn cli_shows_references_with_flag() {
     let mut has_refs = false;
     for line in output.lines().filter(|line| !line.trim().is_empty()) {
         let parts: Vec<_> = line.split('\t').collect();
-        if parts.len() > 3 {
+        if parts.len() > 5 {
             has_refs = true;
             break;
         }
