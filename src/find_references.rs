@@ -29,7 +29,8 @@ where
     I: IntoIterator<Item = (P, String)>,
     P: Into<PathBuf>,
 {
-    let mut inputs_by_language: HashMap<crate::languages::Language, Vec<FileInput>> = HashMap::new();
+    let mut inputs_by_ecosystem: HashMap<crate::languages::Ecosystem, Vec<FileInput>> =
+        HashMap::new();
     for (path, source) in files {
         let path = path.into();
         let Some(language) = crate::languages::language_for_path(&path) else {
@@ -38,8 +39,9 @@ where
         let Some(tree) = parse_tree(&language, &source) else {
             continue;
         };
-        inputs_by_language
-            .entry(language)
+        let ecosystem = crate::languages::ecosystem_for_language(language);
+        inputs_by_ecosystem
+            .entry(ecosystem)
             .or_default()
             .push(FileInput {
                 path,
@@ -50,7 +52,7 @@ where
     }
 
     let mut edges = Vec::new();
-    for inputs in inputs_by_language.values() {
+    for inputs in inputs_by_ecosystem.values() {
         let mut definitions: HashMap<String, Vec<Location>> = HashMap::new();
         let mut definition_positions: HashSet<(PathBuf, usize, usize)> = HashSet::new();
 

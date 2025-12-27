@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use crate::find_references::{find_references, Location, ReferenceEdge};
 use crate::graph::build_file_graph;
-use crate::languages::{language_for_path, Language};
+use crate::languages::{ecosystem_for_language, language_for_path, Ecosystem};
 
 #[derive(Debug, Clone)]
 pub struct OutputRow {
@@ -21,10 +21,10 @@ where
     let inputs: Vec<(PathBuf, String)> = inputs.into_iter().collect();
     let (edges, frecency) = compute_edges_and_frecency(inputs, |paths| frecency_scores(&paths));
 
-    let grouped_by_language = group_edges_by_language(edges);
-    let capacity: usize = grouped_by_language.values().map(|grouped| grouped.len()).sum();
+    let grouped_by_ecosystem = group_edges_by_ecosystem(edges);
+    let capacity: usize = grouped_by_ecosystem.values().map(|grouped| grouped.len()).sum();
     let mut output_rows = Vec::with_capacity(capacity);
-    for grouped in grouped_by_language.into_values() {
+    for grouped in grouped_by_ecosystem.into_values() {
         let file_ranks = rank_files(&grouped);
 
         let mut name_counts: HashMap<String, usize> = HashMap::new();
@@ -119,22 +119,24 @@ fn build_rows(
     rows
 }
 
-fn group_edges_by_language(
+fn group_edges_by_ecosystem(
     edges: Vec<ReferenceEdge>,
-) -> HashMap<Language, HashMap<Location, Vec<Location>>> {
-    let mut grouped_by_language: HashMap<Language, HashMap<Location, Vec<Location>>> = HashMap::new();
+) -> HashMap<Ecosystem, HashMap<Location, Vec<Location>>> {
+    let mut grouped_by_ecosystem: HashMap<Ecosystem, HashMap<Location, Vec<Location>>> =
+        HashMap::new();
     for edge in edges {
         let Some(language) = language_for_path(&edge.definition.path) else {
             continue;
         };
-        grouped_by_language
-            .entry(language)
+        let ecosystem = ecosystem_for_language(language);
+        grouped_by_ecosystem
+            .entry(ecosystem)
             .or_default()
             .entry(edge.definition)
             .or_default()
             .push(edge.usage);
     }
-    grouped_by_language
+    grouped_by_ecosystem
 }
 
 fn frecency_scores(paths: &[PathBuf]) -> HashMap<PathBuf, f64> {

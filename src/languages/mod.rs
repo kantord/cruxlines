@@ -13,6 +13,13 @@ pub enum Language {
     Rust,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Ecosystem {
+    Python,
+    JavaScript,
+    Rust,
+}
+
 pub(crate) fn language_for_path(path: &Path) -> Option<Language> {
     let ext = path.extension().and_then(|ext| ext.to_str())?;
     if python::EXTENSIONS.contains(&ext) {
@@ -31,6 +38,16 @@ pub(crate) fn language_for_path(path: &Path) -> Option<Language> {
         return Some(Language::Rust);
     }
     None
+}
+
+pub(crate) fn ecosystem_for_language(language: Language) -> Ecosystem {
+    match language {
+        Language::Python => Ecosystem::Python,
+        Language::JavaScript | Language::TypeScript | Language::TypeScriptReact => {
+            Ecosystem::JavaScript
+        }
+        Language::Rust => Ecosystem::Rust,
+    }
 }
 
 pub(crate) fn tree_sitter_language(language: Language) -> tree_sitter::Language {

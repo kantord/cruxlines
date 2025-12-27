@@ -120,6 +120,28 @@ fn finds_tsx_cross_file_references() {
 }
 
 #[test]
+fn finds_cross_language_references_within_ecosystem() {
+    let files = vec![
+        (
+            PathBuf::from("utils.ts"),
+            "export function add(a: number, b: number): number {\n    return a + b;\n}\n"
+                .to_string(),
+        ),
+        (
+            PathBuf::from("main.js"),
+            "import { add } from \"./utils\";\nconsole.log(add(1, 2));\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines(files);
+
+    assert!(
+        has_reference(&rows, "add", "utils.ts", "main.js"),
+        "expected reference to utils.ts add from main.js"
+    );
+}
+
+#[test]
 fn does_not_cross_language_references() {
     let files = vec![
         (
