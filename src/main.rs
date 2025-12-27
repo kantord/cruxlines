@@ -3,7 +3,10 @@ use std::process;
 
 use clap::Parser;
 
-use cruxlines::analysis::{analyze_paths, AnalyzeError, OutputRow};
+mod cli_io;
+
+use cruxlines::{cruxlines, OutputRow};
+use cli_io::{gather_inputs, CliIoError};
 
 #[derive(Debug, Parser)]
 struct Cli {
@@ -15,13 +18,14 @@ struct Cli {
 
 fn main() {
     let cli = Cli::parse();
-    let output_rows = match analyze_paths(cli.files) {
-        Ok(rows) => rows,
+    let inputs = match gather_inputs(cli.files) {
+        Ok(inputs) => inputs,
         Err(err) => {
             report_error(err);
             process::exit(1);
         }
     };
+    let output_rows = cruxlines(inputs);
 
     for row in output_rows {
         print_row(&row, cli.references);
@@ -51,7 +55,7 @@ fn print_row(row: &OutputRow, include_references: bool) {
     }
 }
 
-fn format_usage_list(usages: &[cruxlines::find_references::Location]) -> String {
+fn format_usage_list(usages: &[cruxlines::Location]) -> String {
     let mut out = String::new();
     for usage in usages {
         out.push('\t');
@@ -65,12 +69,12 @@ fn format_usage_list(usages: &[cruxlines::find_references::Location]) -> String 
     out
 }
 
-fn report_error(err: AnalyzeError) {
+fn report_error(err: CliIoError) {
     match err {
-        AnalyzeError::CurrentDir(source) => {
+        CliIoError::CurrentDir(source) => {
             eprintln!("cruxlines: failed to read current dir: {source}");
         }
-        AnalyzeError::ReadFile { path, source } => {
+        CliIoError::ReadFile { path, source } => {
             eprintln!("cruxlines: failed to read {}: {source}", path.display());
         }
     }

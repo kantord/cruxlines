@@ -1,5 +1,7 @@
-pub mod analysis;
-pub mod find_references;
-pub mod format_router;
-pub mod graph;
-pub mod scoring;
+mod analysis;
+mod find_references;
+mod format_router;
+mod graph;
+
+pub use analysis::{cruxlines, OutputRow};
+pub use find_references::Location;
