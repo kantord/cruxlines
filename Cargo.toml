@@ -5,6 +5,7 @@ edition = "2024"
 description = "Ranks symbol definitions by cross-file references using tree-sitter."
 license = "MIT"
 readme = "README.md"
+repository = "https://github.com/kantord/cruxlines"
 authors = ["Daniel Kantor <git@daniel-kantor.com>"]
 keywords = ["code-analysis", "graph", "pagerank", "tree-sitter", "references"]
 categories = ["command-line-utilities", "development-tools"]
