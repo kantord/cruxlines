@@ -13,8 +13,6 @@ struct Cli {
     references: bool,
     #[arg(short = 'e', long = "ecosystem", value_enum)]
     ecosystems: Vec<EcosystemArg>,
-    #[arg(required = true)]
-    files: Vec<PathBuf>,
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
@@ -36,12 +34,12 @@ fn main() {
             process::exit(1);
         }
     };
-    if !cwd.join(".git").is_dir() {
-        eprintln!("cruxlines: current dir is not a git repository");
+    let Some(repo_root) = find_repo_root(&cwd) else {
+        eprintln!("cruxlines: current dir is not inside a git repository");
         process::exit(1);
-    }
+    };
     let ecosystems = selected_ecosystems(&cli.ecosystems);
-    let inputs = match gather_inputs(cli.files, &ecosystems) {
+    let inputs = match gather_inputs(&repo_root, &ecosystems) {
         Ok(inputs) => inputs,
         Err(err) => {
             report_error(err);
@@ -106,9 +104,6 @@ fn display_path(path: &std::path::Path, cwd: &std::path::Path) -> String {
 
 fn report_error(err: CliIoError) {
     match err {
-        CliIoError::CurrentDir(source) => {
-            eprintln!("cruxlines: failed to read current dir: {source}");
-        }
         CliIoError::ReadFile { path, source } => {
             eprintln!("cruxlines: failed to read {}: {source}", path.display());
         }
@@ -132,4 +127,13 @@ fn selected_ecosystems(values: &[EcosystemArg]) -> std::collections::HashSet<Eco
         ecosystems.insert(ecosystem);
     }
     ecosystems
+}
+
+fn find_repo_root(start: &std::path::Path) -> Option<PathBuf> {
+    for ancestor in start.ancestors() {
+        if ancestor.join(".git").is_dir() {
+            return Some(ancestor.to_path_buf());
+        }
+    }
+    None
 }

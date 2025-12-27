@@ -5,11 +5,8 @@ use predicates::str::contains;
 
 fn run_cli_output() -> String {
     let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args([
-        "src/languages/python/fixtures/main.py",
-        "src/languages/python/fixtures/utils.py",
-        "src/languages/python/fixtures/models.py",
-    ]);
+    cmd.args(["--ecosystem", "python"])
+        .current_dir(repo_root());
     let output = cmd.assert().success().get_output().stdout.clone();
     String::from_utf8(output).expect("utf8 output")
 }
@@ -69,12 +66,8 @@ fn cli_outputs_scores_in_descending_order() {
 #[test]
 fn cli_groups_references_per_definition() {
     let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args([
-        "-u",
-        "src/languages/python/fixtures/main.py",
-        "src/languages/python/fixtures/utils.py",
-        "src/languages/python/fixtures/models.py",
-    ]);
+    cmd.args(["-u", "--ecosystem", "python"])
+        .current_dir(repo_root());
     let output = cmd.assert().success().get_output().stdout.clone();
     let output = String::from_utf8(output).expect("utf8 output");
     let mut add_lines = 0;
@@ -85,12 +78,16 @@ fn cli_groups_references_per_definition() {
         let _local = parts.next().unwrap_or_default();
         let _file_rank = parts.next().unwrap_or_default();
         let symbol = parts.next().unwrap_or_default();
-        if symbol == "add" {
+        let def_loc = parts.next().unwrap_or_default();
+        if symbol == "add" && def_loc.ends_with("src/languages/python/fixtures/utils.py:4:5") {
             add_lines += 1;
             add_line = line.to_string();
         }
     }
-    assert_eq!(add_lines, 1, "expected one line for add, got {add_lines}");
+    assert_eq!(
+        add_lines, 1,
+        "expected one line for fixture add, got {add_lines}"
+    );
     let refs: Vec<_> = add_line.split('\t').skip(5).collect();
     assert!(
         refs.len() >= 2,
@@ -114,12 +111,7 @@ fn cli_hides_references_without_flag() {
 #[test]
 fn cli_shows_references_with_flag() {
     let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args([
-        "-u",
-        "src/languages/python/fixtures/main.py",
-        "src/languages/python/fixtures/utils.py",
-        "src/languages/python/fixtures/models.py",
-    ]);
+    cmd.args(["-u"]).current_dir(repo_root());
     let output = cmd.assert().success().get_output().stdout.clone();
     let output = String::from_utf8(output).expect("utf8 output");
     let mut has_refs = false;
@@ -136,16 +128,8 @@ fn cli_shows_references_with_flag() {
 #[test]
 fn cli_filters_by_ecosystem() {
     let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args([
-        "--ecosystem",
-        "python",
-        "src/languages/python/fixtures/main.py",
-        "src/languages/python/fixtures/utils.py",
-        "src/languages/python/fixtures/models.py",
-        "src/languages/javascript/fixtures/index.js",
-        "src/languages/javascript/fixtures/utils.js",
-        "src/languages/javascript/fixtures/models.js",
-    ]);
+    cmd.args(["--ecosystem", "python"])
+        .current_dir(repo_root());
     let output = cmd.assert().success().get_output().stdout.clone();
     let output = String::from_utf8(output).expect("utf8 output");
     assert!(
@@ -161,16 +145,8 @@ fn cli_filters_by_ecosystem() {
 #[test]
 fn cli_supports_ecosystem_short_flag() {
     let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args([
-        "-e",
-        "python",
-        "src/languages/python/fixtures/main.py",
-        "src/languages/python/fixtures/utils.py",
-        "src/languages/python/fixtures/models.py",
-        "src/languages/javascript/fixtures/index.js",
-        "src/languages/javascript/fixtures/utils.js",
-        "src/languages/javascript/fixtures/models.js",
-    ]);
+    cmd.args(["-e", "python"])
+        .current_dir(repo_root());
     let output = cmd.assert().success().get_output().stdout.clone();
     let output = String::from_utf8(output).expect("utf8 output");
     assert!(
@@ -186,16 +162,8 @@ fn cli_supports_ecosystem_short_flag() {
 #[test]
 fn cli_accepts_ecosystem_aliases() {
     let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args([
-        "--ecosystem",
-        "py",
-        "src/languages/python/fixtures/main.py",
-        "src/languages/python/fixtures/utils.py",
-        "src/languages/python/fixtures/models.py",
-        "src/languages/javascript/fixtures/index.js",
-        "src/languages/javascript/fixtures/utils.js",
-        "src/languages/javascript/fixtures/models.js",
-    ]);
+    cmd.args(["--ecosystem", "py"])
+        .current_dir(repo_root());
     let output = cmd.assert().success().get_output().stdout.clone();
     let output = String::from_utf8(output).expect("utf8 output");
     assert!(
@@ -209,76 +177,63 @@ fn cli_accepts_ecosystem_aliases() {
 }
 
 #[test]
-fn cli_skips_directory_inputs() {
-    let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args(["src/languages", "src/languages/python/fixtures/main.py"]);
-    cmd.assert().success();
-}
-
-#[test]
 fn cli_skips_unknown_extension_inputs() {
-    let tmp_path = temp_file_path("cruxlines-ignore.txt");
-    std::fs::write(&tmp_path, "not source").expect("write temp file");
+    let dir = temp_dir_path("cruxlines-ignore-ext");
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    std::fs::create_dir_all(dir.join(".git")).expect("create git dir");
+    std::fs::write(
+        dir.join("main.py"),
+        "def add(a, b):\n    return a + b\n\nadd(1, 2)\n",
+    )
+        .expect("write main");
+    std::fs::write(dir.join("ignore.txt"), "not source").expect("write temp file");
 
     let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args([tmp_path.to_str().unwrap(), "src/languages/python/fixtures/main.py"]);
-    cmd.assert().success();
+    cmd.current_dir(&dir);
+    let output = cmd.assert().success().get_output().stdout.clone();
+    let output = String::from_utf8(output).expect("utf8 output");
+    assert!(
+        output.contains("main.py"),
+        "expected output to include main.py, got: {output}"
+    );
+    assert!(
+        !output.contains("ignore.txt"),
+        "expected ignore.txt to be skipped, got: {output}"
+    );
 
-    let _ = std::fs::remove_file(tmp_path);
+    let _ = std::fs::remove_file(dir.join("ignore.txt"));
+    let _ = std::fs::remove_file(dir.join("main.py"));
+    let _ = std::fs::remove_dir(dir.join(".git"));
+    let _ = std::fs::remove_dir(&dir);
 }
 
 #[test]
 fn cli_skips_non_utf8_inputs() {
-    let tmp_path = temp_file_path("cruxlines-binary.py");
-    std::fs::write(&tmp_path, [0xff, 0xfe, 0xfd]).expect("write temp file");
-
-    let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args([tmp_path.to_str().unwrap(), "src/languages/python/fixtures/main.py"]);
-    cmd.assert().success();
-
-    let _ = std::fs::remove_file(tmp_path);
-}
-
-#[test]
-fn cli_respects_gitignore_like_ripgrep() {
-    let dir = temp_dir_path("cruxlines-ignore");
+    let dir = temp_dir_path("cruxlines-binary");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     std::fs::create_dir_all(dir.join(".git")).expect("create git dir");
-    std::fs::write(dir.join(".gitignore"), "ignored.py\n").expect("write gitignore");
-    std::fs::write(
-        dir.join("utils.py"),
-        "def add(a, b):\n    return a + b\n",
-    )
-    .expect("write utils");
     std::fs::write(
         dir.join("main.py"),
-        "from utils import add\nfrom ignored import ignored\n\nprint(add(1, 2))\nprint(ignored())\n",
+        "def add(a, b):\n    return a + b\n\nadd(1, 2)\n",
     )
-    .expect("write main");
-    std::fs::write(
-        dir.join("ignored.py"),
-        "def ignored():\n    return 0\n",
-    )
-    .expect("write ignored");
+        .expect("write main");
+    std::fs::write(dir.join("binary.py"), [0xff, 0xfe, 0xfd]).expect("write temp file");
 
     let mut cmd = cargo_bin_cmd!("cruxlines");
     cmd.current_dir(&dir);
-    cmd.args(["-u", "main.py", "utils.py", "ignored.py"]);
     let output = cmd.assert().success().get_output().stdout.clone();
     let output = String::from_utf8(output).expect("utf8 output");
     assert!(
-        output.contains("utils.py"),
-        "expected output to include utils.py, got: {output}"
+        output.contains("main.py"),
+        "expected output to include main.py, got: {output}"
     );
     assert!(
-        output.contains("ignored.py"),
-        "expected ignored.py to be included when explicitly passed, got: {output}"
+        !output.contains("binary.py"),
+        "expected binary.py to be skipped, got: {output}"
     );
 
-    let _ = std::fs::remove_file(dir.join("ignored.py"));
+    let _ = std::fs::remove_file(dir.join("binary.py"));
     let _ = std::fs::remove_file(dir.join("main.py"));
-    let _ = std::fs::remove_file(dir.join("utils.py"));
-    let _ = std::fs::remove_file(dir.join(".gitignore"));
     let _ = std::fs::remove_dir(dir.join(".git"));
     let _ = std::fs::remove_dir(&dir);
 }
@@ -307,7 +262,7 @@ fn cli_skips_gitignored_when_scanning_directory() {
 
     let mut cmd = cargo_bin_cmd!("cruxlines");
     cmd.current_dir(&dir);
-    cmd.args(["-u", "."]);
+    cmd.args(["-u"]);
     let output = cmd.assert().success().get_output().stdout.clone();
     let output = String::from_utf8(output).expect("utf8 output");
     assert!(
@@ -327,14 +282,8 @@ fn cli_skips_gitignored_when_scanning_directory() {
     let _ = std::fs::remove_dir(&dir);
 }
 
-fn temp_file_path(name: &str) -> std::path::PathBuf {
-    let mut path = std::env::temp_dir();
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("time")
-        .as_nanos();
-    path.push(format!("{name}-{nanos}"));
-    path
+fn repo_root() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
 fn temp_dir_path(name: &str) -> std::path::PathBuf {

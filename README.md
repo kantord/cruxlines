@@ -47,25 +47,25 @@ while producing useful rankings.
 Analyze the current repo (run from the repo root):
 
 ```
-cruxlines .
+cruxlines
 ```
 
 Show reference locations:
 
 ```
-cruxlines -u .
+cruxlines -u
 ```
 
 Filter by ecosystem (defaults to all):
 
 ```
-cruxlines --ecosystem python .
+cruxlines --ecosystem python
 ```
 
 Shorthand aliases are supported (`py`, `js`, `ts`, `tsx`, `rs`):
 
 ```
-cruxlines -e py .
+cruxlines -e py
 ```
 
 ## Output format
@@ -88,11 +88,11 @@ score    local_score    file_rank    symbol    def_path:line:col    [ref_path:li
 ## Git ignore behavior
 
 - Directory scans respect gitignore and common ignore files.
-- Explicit file arguments are always processed (like ripgrep).
 
 ## Repo root
 
-cruxlines expects to run from the repository root (a directory with `.git`).
+cruxlines expects to run from the repository root (a directory with `.git`) and
+always scans the whole repo.
 
 ## Notes
 
