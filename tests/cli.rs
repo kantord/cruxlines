@@ -137,3 +137,37 @@ fn cli_skips_directory_inputs() {
     cmd.args(["fixtures", "fixtures/python/main.py"]);
     cmd.assert().success();
 }
+
+#[test]
+fn cli_skips_unknown_extension_inputs() {
+    let tmp_path = temp_file_path("cruxlines-ignore.txt");
+    std::fs::write(&tmp_path, "not source").expect("write temp file");
+
+    let mut cmd = cargo_bin_cmd!("cruxlines");
+    cmd.args([tmp_path.to_str().unwrap(), "fixtures/python/main.py"]);
+    cmd.assert().success();
+
+    let _ = std::fs::remove_file(tmp_path);
+}
+
+#[test]
+fn cli_skips_non_utf8_inputs() {
+    let tmp_path = temp_file_path("cruxlines-binary.py");
+    std::fs::write(&tmp_path, [0xff, 0xfe, 0xfd]).expect("write temp file");
+
+    let mut cmd = cargo_bin_cmd!("cruxlines");
+    cmd.args([tmp_path.to_str().unwrap(), "fixtures/python/main.py"]);
+    cmd.assert().success();
+
+    let _ = std::fs::remove_file(tmp_path);
+}
+
+fn temp_file_path(name: &str) -> std::path::PathBuf {
+    let mut path = std::env::temp_dir();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("time")
+        .as_nanos();
+    path.push(format!("{name}-{nanos}"));
+    path
+}

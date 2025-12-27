@@ -24,11 +24,20 @@ fn main() {
         if path.is_dir() {
             continue;
         }
-        let contents = match std::fs::read_to_string(path) {
-            Ok(contents) => contents,
+        if cruxlines::format_router::language_for_path(path).is_none() {
+            continue;
+        }
+        let bytes = match std::fs::read(path) {
+            Ok(bytes) => bytes,
             Err(err) => {
                 eprintln!("cruxlines: failed to read {}: {err}", path.display());
                 process::exit(1);
+            }
+        };
+        let contents = match String::from_utf8(bytes) {
+            Ok(contents) => contents,
+            Err(_) => {
+                continue;
             }
         };
         inputs.push((path.clone(), contents));
