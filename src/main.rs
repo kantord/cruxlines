@@ -1,17 +1,20 @@
 use std::path::PathBuf;
 use std::process;
+use std::time::Instant;
 
 use clap::Parser;
 
 mod cli_io;
 
-use cruxlines::{cruxlines, OutputRow};
+use cruxlines::{cruxlines, cruxlines_profiled, OutputRow, ProfileStats};
 use cli_io::{gather_inputs, CliIoError};
 
 #[derive(Debug, Parser)]
 struct Cli {
     #[arg(short = 'u', long = "references")]
     references: bool,
+    #[arg(long = "profile")]
+    profile: bool,
     #[arg(required = true)]
     files: Vec<PathBuf>,
 }
@@ -25,6 +28,7 @@ fn main() {
             process::exit(1);
         }
     };
+    let start_inputs = Instant::now();
     let inputs = match gather_inputs(cli.files) {
         Ok(inputs) => inputs,
         Err(err) => {
@@ -32,10 +36,22 @@ fn main() {
             process::exit(1);
         }
     };
-    let output_rows = cruxlines(inputs);
+    let inputs_duration = start_inputs.elapsed();
+    let start_analysis = Instant::now();
+    let (output_rows, profile_stats) = if cli.profile {
+        let (rows, stats) = cruxlines_profiled(inputs);
+        (rows, Some(stats))
+    } else {
+        (cruxlines(inputs), None)
+    };
+    let analysis_duration = start_analysis.elapsed();
 
-    for row in output_rows {
+    for row in &output_rows {
         print_row(&row, cli.references, &cwd);
+    }
+
+    if let Some(stats) = profile_stats {
+        report_profile(inputs_duration.as_millis(), analysis_duration.as_millis(), &stats);
     }
 }
 
@@ -92,4 +108,16 @@ fn report_error(err: CliIoError) {
             eprintln!("cruxlines: failed to read {}: {source}", path.display());
         }
     }
+}
+
+fn report_profile(inputs_ms: u128, analysis_ms: u128, stats: &ProfileStats) {
+    eprintln!(
+        "profile: inputs={}ms analysis={}ms parse={}ms score={}ms definitions={} references={}",
+        inputs_ms,
+        analysis_ms,
+        stats.parse_ms,
+        stats.score_ms,
+        stats.definitions,
+        stats.references
+    );
 }
