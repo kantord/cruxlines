@@ -1,18 +1,27 @@
 use std::path::PathBuf;
 use std::process;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 
 mod cli_io;
 
-use cruxlines::{cruxlines, OutputRow};
+use cruxlines::{cruxlines, Ecosystem, OutputRow};
 use cli_io::{gather_inputs, CliIoError};
 
 #[derive(Debug, Parser)]
 struct Cli {
     #[arg(short = 'u', long = "references")]
     references: bool,
+    #[arg(short = 'e', long = "ecosystem", value_enum)]
+    ecosystems: Vec<EcosystemArg>,
     #[arg(required = true)]
     files: Vec<PathBuf>,
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum EcosystemArg {
+    Python,
+    JavaScript,
+    Rust,
 }
 
 fn main() {
@@ -24,7 +33,12 @@ fn main() {
             process::exit(1);
         }
     };
-    let inputs = match gather_inputs(cli.files) {
+    if !cwd.join(".git").is_dir() {
+        eprintln!("cruxlines: current dir is not a git repository");
+        process::exit(1);
+    }
+    let ecosystems = selected_ecosystems(&cli.ecosystems);
+    let inputs = match gather_inputs(cli.files, &ecosystems) {
         Ok(inputs) => inputs,
         Err(err) => {
             report_error(err);
@@ -96,4 +110,23 @@ fn report_error(err: CliIoError) {
             eprintln!("cruxlines: failed to read {}: {source}", path.display());
         }
     }
+}
+
+fn selected_ecosystems(values: &[EcosystemArg]) -> std::collections::HashSet<Ecosystem> {
+    let mut ecosystems = std::collections::HashSet::new();
+    if values.is_empty() {
+        ecosystems.insert(Ecosystem::Python);
+        ecosystems.insert(Ecosystem::JavaScript);
+        ecosystems.insert(Ecosystem::Rust);
+        return ecosystems;
+    }
+    for value in values {
+        let ecosystem = match value {
+            EcosystemArg::Python => Ecosystem::Python,
+            EcosystemArg::JavaScript => Ecosystem::JavaScript,
+            EcosystemArg::Rust => Ecosystem::Rust,
+        };
+        ecosystems.insert(ecosystem);
+    }
+    ecosystems
 }

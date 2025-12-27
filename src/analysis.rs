@@ -19,7 +19,7 @@ where
     I: IntoIterator<Item = (PathBuf, String)>,
 {
     let inputs: Vec<(PathBuf, String)> = inputs.into_iter().collect();
-    let (edges, frecency) = compute_edges_and_frecency(inputs, |paths| frecency_scores(&paths));
+    let (edges, frecency) = compute_edges_and_frecency(inputs, || frecency_scores());
 
     let grouped_by_ecosystem = group_edges_by_ecosystem(edges);
     let capacity: usize = grouped_by_ecosystem.values().map(|grouped| grouped.len()).sum();
@@ -61,10 +61,9 @@ fn compute_edges_and_frecency<F>(
     frecency_fn: F,
 ) -> (Vec<ReferenceEdge>, HashMap<PathBuf, f64>)
 where
-    F: FnOnce(Vec<PathBuf>) -> HashMap<PathBuf, f64> + Send + 'static,
+    F: FnOnce() -> HashMap<PathBuf, f64> + Send + 'static,
 {
-    let paths: Vec<PathBuf> = inputs.iter().map(|(path, _)| path.clone()).collect();
-    let frecency_handle = std::thread::spawn(move || frecency_fn(paths));
+    let frecency_handle = std::thread::spawn(frecency_fn);
 
     let edges: Vec<ReferenceEdge> = find_references(inputs).collect();
 
@@ -139,10 +138,13 @@ fn group_edges_by_ecosystem(
     grouped_by_ecosystem
 }
 
-fn frecency_scores(paths: &[PathBuf]) -> HashMap<PathBuf, f64> {
-    let Some(repo_root) = find_repo_root(paths) else {
+fn frecency_scores() -> HashMap<PathBuf, f64> {
+    let Ok(repo_root) = std::env::current_dir() else {
         return HashMap::new();
     };
+    if !repo_root.join(".git").is_dir() {
+        return HashMap::new();
+    }
     let Ok(scores) = frecenfile::analyze_repo(&repo_root, None, None) else {
         return HashMap::new();
     };
@@ -151,17 +153,6 @@ fn frecency_scores(paths: &[PathBuf]) -> HashMap<PathBuf, f64> {
         out.insert(repo_root.join(path), score);
     }
     out
-}
-
-fn find_repo_root(paths: &[PathBuf]) -> Option<PathBuf> {
-    let first = paths.first()?.as_path();
-    for ancestor in first.ancestors() {
-        let git_dir = ancestor.join(".git");
-        if git_dir.is_dir() {
-            return Some(ancestor.to_path_buf());
-        }
-    }
-    None
 }
 #[cfg(test)]
 mod tests {
@@ -260,7 +251,7 @@ mod tests {
         let recorded = std::sync::Arc::new(std::sync::Mutex::new(None));
         let recorded_handle = std::sync::Arc::clone(&recorded);
 
-        let (_edges, _frecency) = compute_edges_and_frecency(inputs, move |_paths| {
+        let (_edges, _frecency) = compute_edges_and_frecency(inputs, move || {
             *recorded_handle.lock().unwrap() = Some(std::thread::current().id());
             HashMap::new()
         });

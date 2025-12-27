@@ -3,13 +3,18 @@ use std::path::PathBuf;
 
 use ignore::WalkBuilder;
 
+use cruxlines::Ecosystem;
+
 #[derive(Debug)]
 pub enum CliIoError {
     CurrentDir(std::io::Error),
     ReadFile { path: PathBuf, source: std::io::Error },
 }
 
-pub fn gather_inputs<I>(paths: I) -> Result<Vec<(PathBuf, String)>, CliIoError>
+pub fn gather_inputs<I>(
+    paths: I,
+    ecosystems: &HashSet<Ecosystem>,
+) -> Result<Vec<(PathBuf, String)>, CliIoError>
 where
     I: IntoIterator<Item = PathBuf>,
 {
@@ -34,7 +39,10 @@ where
         if !file.is_file() {
             continue;
         }
-        if !cruxlines::is_supported_path(&file) {
+        let Some(ecosystem) = cruxlines::ecosystem_for_path(&file) else {
+            continue;
+        };
+        if !ecosystems.contains(&ecosystem) {
             continue;
         }
         let bytes = std::fs::read(&file)
@@ -73,7 +81,10 @@ where
                 continue;
             }
             let path = entry.path();
-            if !cruxlines::is_supported_path(path) {
+            let Some(ecosystem) = cruxlines::ecosystem_for_path(path) else {
+                continue;
+            };
+            if !ecosystems.contains(&ecosystem) {
                 continue;
             }
             let bytes = std::fs::read(path)

@@ -134,6 +134,56 @@ fn cli_shows_references_with_flag() {
 }
 
 #[test]
+fn cli_filters_by_ecosystem() {
+    let mut cmd = cargo_bin_cmd!("cruxlines");
+    cmd.args([
+        "--ecosystem",
+        "python",
+        "src/languages/python/fixtures/main.py",
+        "src/languages/python/fixtures/utils.py",
+        "src/languages/python/fixtures/models.py",
+        "src/languages/javascript/fixtures/index.js",
+        "src/languages/javascript/fixtures/utils.js",
+        "src/languages/javascript/fixtures/models.js",
+    ]);
+    let output = cmd.assert().success().get_output().stdout.clone();
+    let output = String::from_utf8(output).expect("utf8 output");
+    assert!(
+        output.contains("src/languages/python/fixtures"),
+        "expected python fixtures in output, got: {output}"
+    );
+    assert!(
+        !output.contains("src/languages/javascript/fixtures"),
+        "expected javascript fixtures to be filtered out, got: {output}"
+    );
+}
+
+#[test]
+fn cli_supports_ecosystem_short_flag() {
+    let mut cmd = cargo_bin_cmd!("cruxlines");
+    cmd.args([
+        "-e",
+        "python",
+        "src/languages/python/fixtures/main.py",
+        "src/languages/python/fixtures/utils.py",
+        "src/languages/python/fixtures/models.py",
+        "src/languages/javascript/fixtures/index.js",
+        "src/languages/javascript/fixtures/utils.js",
+        "src/languages/javascript/fixtures/models.js",
+    ]);
+    let output = cmd.assert().success().get_output().stdout.clone();
+    let output = String::from_utf8(output).expect("utf8 output");
+    assert!(
+        output.contains("src/languages/python/fixtures"),
+        "expected python fixtures in output, got: {output}"
+    );
+    assert!(
+        !output.contains("src/languages/javascript/fixtures"),
+        "expected javascript fixtures to be filtered out, got: {output}"
+    );
+}
+
+#[test]
 fn cli_skips_directory_inputs() {
     let mut cmd = cargo_bin_cmd!("cruxlines");
     cmd.args(["src/languages", "src/languages/python/fixtures/main.py"]);

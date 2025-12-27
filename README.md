@@ -44,7 +44,7 @@ while producing useful rankings.
 
 ## CLI usage
 
-Analyze the current repo:
+Analyze the current repo (run from the repo root):
 
 ```
 cruxlines .
@@ -54,6 +54,12 @@ Show reference locations:
 
 ```
 cruxlines -u .
+```
+
+Filter by ecosystem (defaults to all):
+
+```
+cruxlines --ecosystem python .
 ```
 
 ## Output format
@@ -77,6 +83,10 @@ score    local_score    file_rank    symbol    def_path:line:col    [ref_path:li
 
 - Directory scans respect gitignore and common ignore files.
 - Explicit file arguments are always processed (like ripgrep).
+
+## Repo root
+
+cruxlines expects to run from the repository root (a directory with `.git`).
 
 ## Notes
 
