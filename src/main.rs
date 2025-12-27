@@ -1,8 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::process;
 
 use clap::Parser;
+use ignore::WalkBuilder;
 use petgraph::algo::page_rank;
 
 use cruxlines::find_references::{find_references, ReferenceEdge};
@@ -19,11 +20,78 @@ struct Cli {
 
 fn main() {
     let cli = Cli::parse();
-    let mut inputs = Vec::with_capacity(cli.files.len());
+    let cwd = match std::env::current_dir() {
+        Ok(cwd) => cwd,
+        Err(err) => {
+            eprintln!("cruxlines: failed to read current dir: {err}");
+            process::exit(1);
+        }
+    };
+    let mut requested_files: HashSet<PathBuf> = HashSet::new();
+    let mut requested_dirs: HashSet<PathBuf> = HashSet::new();
     for path in &cli.files {
-        if path.is_dir() {
+        let abs = if path.is_absolute() {
+            path.clone()
+        } else {
+            cwd.join(path)
+        };
+        if abs.is_dir() {
+            requested_dirs.insert(abs);
+        } else {
+            requested_files.insert(abs);
+        }
+    }
+    let mut roots: Vec<PathBuf> = Vec::new();
+    for dir in &requested_dirs {
+        roots.push(dir.clone());
+    }
+    for file in &requested_files {
+        if let Some(parent) = file.parent() {
+            roots.push(parent.to_path_buf());
+        }
+    }
+    if roots.is_empty() {
+        return;
+    }
+    roots.sort();
+    roots.dedup();
+
+    let mut builder = WalkBuilder::new(&roots[0]);
+    for path in &roots[1..] {
+        builder.add(path);
+    }
+    let requested_files = requested_files;
+    let requested_dirs = requested_dirs;
+    builder.filter_entry(move |entry| {
+        let path = entry.path();
+        let abs = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            cwd.join(path)
+        };
+        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            requested_dirs.iter().any(|dir| dir.starts_with(&abs))
+                || requested_files.iter().any(|file| file.starts_with(&abs))
+        } else {
+            requested_files.contains(&abs)
+                || requested_dirs.iter().any(|dir| abs.starts_with(dir))
+        }
+    });
+
+    let mut inputs = Vec::new();
+    for entry in builder.build() {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(_) => continue,
+        };
+        if !entry
+            .file_type()
+            .map(|file_type| file_type.is_file())
+            .unwrap_or(false)
+        {
             continue;
         }
+        let path = entry.path();
         if cruxlines::format_router::language_for_path(path).is_none() {
             continue;
         }
@@ -40,7 +108,7 @@ fn main() {
                 continue;
             }
         };
-        inputs.push((path.clone(), contents));
+        inputs.push((path.to_path_buf(), contents));
     }
 
     let mut edges: Vec<ReferenceEdge> = find_references(inputs).collect();
