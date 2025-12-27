@@ -63,7 +63,11 @@ where
         });
     }
 
-    sort_by_rank_desc(&mut output_rows);
+    output_rows.sort_by(|a, b| {
+        b.rank
+            .partial_cmp(&a.rank)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     Ok(output_rows)
 }
 
