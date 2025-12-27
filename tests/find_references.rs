@@ -85,6 +85,41 @@ fn finds_rust_cross_file_references() {
 }
 
 #[test]
+fn finds_typescript_cross_file_references() {
+    let files = vec![
+        read_fixture("src/languages/javascript/fixtures/index.ts"),
+        read_fixture("src/languages/javascript/fixtures/utils.ts"),
+        read_fixture("src/languages/javascript/fixtures/models.ts"),
+    ];
+
+    let rows = cruxlines(files);
+
+    assert!(
+        has_reference(&rows, "add", "src/languages/javascript/fixtures/utils.ts", "src/languages/javascript/fixtures/index.ts"),
+        "expected reference to utils.add from index.ts"
+    );
+    assert!(
+        has_reference(&rows, "User", "src/languages/javascript/fixtures/models.ts", "src/languages/javascript/fixtures/index.ts"),
+        "expected reference to models.User from index.ts"
+    );
+}
+
+#[test]
+fn finds_tsx_cross_file_references() {
+    let files = vec![
+        read_fixture("src/languages/javascript/fixtures/index.tsx"),
+        read_fixture("src/languages/javascript/fixtures/components.tsx"),
+    ];
+
+    let rows = cruxlines(files);
+
+    assert!(
+        has_reference(&rows, "Button", "src/languages/javascript/fixtures/components.tsx", "src/languages/javascript/fixtures/index.tsx"),
+        "expected reference to components.Button from index.tsx"
+    );
+}
+
+#[test]
 fn does_not_cross_language_references() {
     let files = vec![
         (

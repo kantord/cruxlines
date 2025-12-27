@@ -5,10 +5,20 @@ use tree_sitter::Node;
 
 use crate::find_references::{collect_identifier_nodes, record_definition, Location};
 
-pub(crate) const EXTENSIONS: &[&str] = &["js"];
+pub(crate) const EXTENSIONS: &[&str] = &["js", "jsx"];
+pub(crate) const TYPESCRIPT_EXTENSIONS: &[&str] = &["ts"];
+pub(crate) const TSX_EXTENSIONS: &[&str] = &["tsx"];
 
 pub(crate) fn language() -> tree_sitter::Language {
     tree_sitter_javascript::LANGUAGE.into()
+}
+
+pub(crate) fn language_typescript() -> tree_sitter::Language {
+    tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()
+}
+
+pub(crate) fn language_tsx() -> tree_sitter::Language {
+    tree_sitter_typescript::LANGUAGE_TSX.into()
 }
 
 pub(crate) fn collect_definition(
@@ -19,7 +29,11 @@ pub(crate) fn collect_definition(
     definition_positions: &mut HashSet<(PathBuf, usize, usize)>,
 ) {
     match node.kind() {
-        "function_declaration" | "class_declaration" => {
+        "function_declaration"
+        | "class_declaration"
+        | "interface_declaration"
+        | "type_alias_declaration"
+        | "enum_declaration" => {
             if is_exported(node) {
                 if let Some(name) = node.child_by_field_name("name") {
                     record_definition(path, source, name, definitions, definition_positions);

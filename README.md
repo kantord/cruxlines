@@ -34,7 +34,7 @@ The output includes all components so you can interpret the score.
 The goal is to keep logic simple and avoid heavy per-language semantics:
 
 - Python: only top-level definitions/assignments (importable symbols).
-- JavaScript: only exported declarations (importable symbols).
+- JavaScript/TypeScript: only exported declarations (importable symbols).
 - Rust: only top-level items (importable symbols).
 - References are name-based, which is fast and language-agnostic.
 - Name collisions are smoothed by splitting score across same-name definitions.
@@ -75,7 +75,8 @@ score    local_score    file_rank    symbol    def_path:line:col    [ref_path:li
 ## Supported languages
 
 - Python (`.py`)
-- JavaScript (`.js`)
+- JavaScript (`.js`, `.jsx`)
+- TypeScript (`.ts`, `.tsx`)
 - Rust (`.rs`)
 
 ## Git ignore behavior

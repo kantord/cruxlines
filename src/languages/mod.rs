@@ -8,6 +8,8 @@ pub(crate) mod rust;
 pub enum Language {
     Python,
     JavaScript,
+    TypeScript,
+    TypeScriptReact,
     Rust,
 }
 
@@ -19,6 +21,12 @@ pub(crate) fn language_for_path(path: &Path) -> Option<Language> {
     if javascript::EXTENSIONS.contains(&ext) {
         return Some(Language::JavaScript);
     }
+    if javascript::TYPESCRIPT_EXTENSIONS.contains(&ext) {
+        return Some(Language::TypeScript);
+    }
+    if javascript::TSX_EXTENSIONS.contains(&ext) {
+        return Some(Language::TypeScriptReact);
+    }
     if rust::EXTENSIONS.contains(&ext) {
         return Some(Language::Rust);
     }
@@ -29,6 +37,8 @@ pub(crate) fn tree_sitter_language(language: Language) -> tree_sitter::Language 
     match language {
         Language::Python => python::language(),
         Language::JavaScript => javascript::language(),
+        Language::TypeScript => javascript::language_typescript(),
+        Language::TypeScriptReact => javascript::language_tsx(),
         Language::Rust => rust::language(),
     }
 }
@@ -48,6 +58,24 @@ mod tests {
     fn recognizes_javascript_extension() {
         let lang = language_for_path(&PathBuf::from("file.js"));
         assert_eq!(lang, Some(Language::JavaScript));
+    }
+
+    #[test]
+    fn recognizes_jsx_extension() {
+        let lang = language_for_path(&PathBuf::from("file.jsx"));
+        assert_eq!(lang, Some(Language::JavaScript));
+    }
+
+    #[test]
+    fn recognizes_typescript_extension() {
+        let lang = language_for_path(&PathBuf::from("file.ts"));
+        assert_eq!(lang, Some(Language::TypeScript));
+    }
+
+    #[test]
+    fn recognizes_tsx_extension() {
+        let lang = language_for_path(&PathBuf::from("file.tsx"));
+        assert_eq!(lang, Some(Language::TypeScriptReact));
     }
 
     #[test]

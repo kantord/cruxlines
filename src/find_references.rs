@@ -106,7 +106,9 @@ fn collect_definitions(
                 definitions,
                 definition_positions,
             ),
-            crate::languages::Language::JavaScript => {
+            crate::languages::Language::JavaScript
+            | crate::languages::Language::TypeScript
+            | crate::languages::Language::TypeScriptReact => {
                 crate::languages::javascript::collect_definition(
                     path,
                     source,
@@ -142,7 +144,10 @@ fn collect_references(
     let root = tree.root_node();
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
-        if node.kind() == "identifier" {
+        if node.kind() == "identifier"
+            || node.kind() == "jsx_identifier"
+            || node.kind() == "type_identifier"
+        {
             let (line, column) = position(node);
             if !definition_positions.contains(&(path.to_path_buf(), line, column)) {
                 if let Ok(name) = node.utf8_text(source.as_bytes()) {
