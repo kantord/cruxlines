@@ -75,6 +75,7 @@ where
                 &input.tree,
                 &definitions,
                 &definition_positions,
+                crate::languages::reference_kinds(input.language),
                 *ecosystem,
                 &mut edges,
             );
@@ -143,16 +144,14 @@ fn collect_references(
     tree: &Tree,
     definitions: &HashMap<String, Vec<Location>>,
     definition_positions: &HashSet<(PathBuf, usize, usize)>,
+    reference_kinds: &[&str],
     ecosystem: crate::languages::Ecosystem,
     edges: &mut Vec<ReferenceEdge>,
 ) {
     let root = tree.root_node();
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
-        if node.kind() == "identifier"
-            || node.kind() == "jsx_identifier"
-            || node.kind() == "type_identifier"
-        {
+        if reference_kinds.contains(&node.kind()) {
             let (line, column) = position(node);
             if !definition_positions.contains(&(path.to_path_buf(), line, column)) {
                 if let Ok(name) = node.utf8_text(source.as_bytes()) {

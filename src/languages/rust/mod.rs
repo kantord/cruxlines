@@ -6,6 +6,7 @@ use tree_sitter::Node;
 use crate::find_references::{record_definition, Location};
 
 pub(crate) const EXTENSIONS: &[&str] = &["rs"];
+pub(crate) const REFERENCE_KINDS: &[&str] = &["identifier", "type_identifier"];
 
 pub(crate) fn language() -> tree_sitter::Language {
     tree_sitter_rust::LANGUAGE.into()

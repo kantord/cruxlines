@@ -8,6 +8,7 @@ use crate::find_references::{collect_identifier_nodes, record_definition, Locati
 pub(crate) const EXTENSIONS: &[&str] = &["js", "jsx"];
 pub(crate) const TYPESCRIPT_EXTENSIONS: &[&str] = &["ts"];
 pub(crate) const TSX_EXTENSIONS: &[&str] = &["tsx"];
+pub(crate) const REFERENCE_KINDS: &[&str] = &["identifier", "jsx_identifier", "type_identifier"];
 
 pub(crate) fn language() -> tree_sitter::Language {
     tree_sitter_javascript::LANGUAGE.into()

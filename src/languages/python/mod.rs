@@ -6,6 +6,7 @@ use tree_sitter::Node;
 use crate::find_references::{collect_identifier_nodes, record_definition, Location};
 
 pub(crate) const EXTENSIONS: &[&str] = &["py"];
+pub(crate) const REFERENCE_KINDS: &[&str] = &["identifier"];
 
 pub(crate) fn language() -> tree_sitter::Language {
     tree_sitter_python::LANGUAGE.into()

@@ -85,6 +85,27 @@ fn finds_rust_cross_file_references() {
 }
 
 #[test]
+fn finds_rust_type_identifier_references() {
+    let files = vec![
+        (
+            PathBuf::from("models.rs"),
+            "pub struct User;\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.rs"),
+            "mod models;\n\nfn main() {\n    let _u: models::User;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "User", "models.rs", "main.rs"),
+        "expected reference to models::User from main.rs type usage"
+    );
+}
+
+#[test]
 fn finds_typescript_cross_file_references() {
     let files = vec![
         read_fixture("src/languages/javascript/fixtures/index.ts"),
