@@ -68,6 +68,21 @@ Shorthand aliases are supported (`py`, `js`, `ts`, `tsx`, `rs`):
 cruxlines -e py
 ```
 
+## Library usage
+
+Use the library API by passing a repo root and selected ecosystems:
+
+```rust
+use std::collections::HashSet;
+use std::path::PathBuf;
+
+use cruxlines::{cruxlines, Ecosystem};
+
+let repo_root = PathBuf::from(".");
+let ecosystems = HashSet::from([Ecosystem::Python, Ecosystem::JavaScript]);
+let rows = cruxlines(&repo_root, &ecosystems)?;
+```
+
 ## Output format
 
 Each line is tab-separated:
