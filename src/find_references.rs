@@ -15,6 +15,7 @@ pub struct Location {
 pub struct ReferenceEdge {
     pub definition: Location,
     pub usage: Location,
+    pub ecosystem: crate::languages::Ecosystem,
 }
 
 struct FileInput {
@@ -52,7 +53,7 @@ where
     }
 
     let mut edges = Vec::new();
-    for inputs in inputs_by_ecosystem.values() {
+    for (ecosystem, inputs) in &inputs_by_ecosystem {
         let mut definitions: HashMap<String, Vec<Location>> = HashMap::new();
         let mut definition_positions: HashSet<(PathBuf, usize, usize)> = HashSet::new();
 
@@ -74,6 +75,7 @@ where
                 &input.tree,
                 &definitions,
                 &definition_positions,
+                *ecosystem,
                 &mut edges,
             );
         }
@@ -141,6 +143,7 @@ fn collect_references(
     tree: &Tree,
     definitions: &HashMap<String, Vec<Location>>,
     definition_positions: &HashSet<(PathBuf, usize, usize)>,
+    ecosystem: crate::languages::Ecosystem,
     edges: &mut Vec<ReferenceEdge>,
 ) {
     let root = tree.root_node();
@@ -164,6 +167,7 @@ fn collect_references(
                             edges.push(ReferenceEdge {
                                 definition: def.clone(),
                                 usage: usage.clone(),
+                                ecosystem,
                             });
                         }
                     }

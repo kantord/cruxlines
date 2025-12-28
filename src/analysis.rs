@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use crate::find_references::{find_references, Location, ReferenceEdge};
 use crate::graph::build_file_graph;
-use crate::languages::{ecosystem_for_language, language_for_path, Ecosystem};
+use crate::languages::Ecosystem;
 
 #[derive(Debug, Clone)]
 pub struct OutputRow {
@@ -146,10 +146,7 @@ fn group_edges_by_ecosystem(
     let mut grouped_by_ecosystem: HashMap<Ecosystem, HashMap<Location, Vec<Location>>> =
         HashMap::new();
     for edge in edges {
-        let Some(language) = language_for_path(&edge.definition.path) else {
-            continue;
-        };
-        let ecosystem = ecosystem_for_language(language);
+        let ecosystem = edge.ecosystem;
         grouped_by_ecosystem
             .entry(ecosystem)
             .or_default()
@@ -187,7 +184,9 @@ fn find_repo_root(start: &std::path::Path) -> Option<PathBuf> {
 }
 #[cfg(test)]
 mod tests {
-    use super::cruxlines;
+    use super::{cruxlines, group_edges_by_ecosystem};
+    use crate::find_references::{Location, ReferenceEdge};
+    use crate::languages::Ecosystem;
     use std::path::PathBuf;
 
     #[test]
@@ -269,6 +268,29 @@ mod tests {
             .unwrap_or(0.0);
         assert!(a_score > 0.0);
         assert!(b_score > 0.0);
+    }
+
+    #[test]
+    fn groups_edges_without_extension_by_ecosystem() {
+        let edge = ReferenceEdge {
+            definition: Location {
+                path: PathBuf::from("defs/alpha"),
+                line: 1,
+                column: 1,
+                name: "alpha".to_string(),
+            },
+            usage: Location {
+                path: PathBuf::from("use"),
+                line: 2,
+                column: 1,
+                name: "alpha".to_string(),
+            },
+            ecosystem: Ecosystem::Python,
+        };
+
+        let grouped = group_edges_by_ecosystem(vec![edge]);
+        let count: usize = grouped.values().map(|map| map.len()).sum();
+        assert_eq!(count, 1, "expected edge to be grouped by ecosystem");
     }
 
 }
