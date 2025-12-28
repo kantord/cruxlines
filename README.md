@@ -88,10 +88,8 @@ let rows = cruxlines(&repo_root, &ecosystems)?;
 Each line is tab-separated:
 
 ```
-score    local_score    file_rank    symbol    def_path:line:col    [ref_path:line:col...]
+score    local_score    file_rank    symbol    def_path:line:col
 ```
-
-`-u/--references` controls whether reference locations are printed.
 
 ## Supported languages
 

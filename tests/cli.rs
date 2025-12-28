@@ -83,38 +83,6 @@ fn cli_outputs_scores_in_descending_order() {
 }
 
 #[test]
-fn cli_groups_references_per_definition() {
-    let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args(["-u", "--ecosystem", "python"])
-        .current_dir(repo_root());
-    let output = cmd.assert().success().get_output().stdout.clone();
-    let output = String::from_utf8(output).expect("utf8 output");
-    let mut add_lines = 0;
-    let mut add_line = String::new();
-    for line in output.lines().filter(|line| !line.trim().is_empty()) {
-        let mut parts = line.split('\t');
-        let _score = parts.next().unwrap_or_default();
-        let _local = parts.next().unwrap_or_default();
-        let _file_rank = parts.next().unwrap_or_default();
-        let symbol = parts.next().unwrap_or_default();
-        let def_loc = parts.next().unwrap_or_default();
-        if symbol == "add" && def_loc.ends_with("src/languages/python/fixtures/utils.py:4:5") {
-            add_lines += 1;
-            add_line = line.to_string();
-        }
-    }
-    assert_eq!(
-        add_lines, 1,
-        "expected one line for fixture add, got {add_lines}"
-    );
-    let refs: Vec<_> = add_line.split('\t').skip(5).collect();
-    assert!(
-        refs.len() >= 2,
-        "expected at least two references for add, got {refs:?}"
-    );
-}
-
-#[test]
 fn cli_hides_references_without_flag() {
     let output = run_cli_output();
     for line in output.lines().filter(|line| !line.trim().is_empty()) {
@@ -122,26 +90,9 @@ fn cli_hides_references_without_flag() {
         assert_eq!(
             parts.len(),
             5,
-            "expected 5 columns without references flag, got {parts:?}"
+            "expected 5 columns, got {parts:?}"
         );
     }
-}
-
-#[test]
-fn cli_shows_references_with_flag() {
-    let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args(["-u"]).current_dir(repo_root());
-    let output = cmd.assert().success().get_output().stdout.clone();
-    let output = String::from_utf8(output).expect("utf8 output");
-    let mut has_refs = false;
-    for line in output.lines().filter(|line| !line.trim().is_empty()) {
-        let parts: Vec<_> = line.split('\t').collect();
-        if parts.len() > 5 {
-            has_refs = true;
-            break;
-        }
-    }
-    assert!(has_refs, "expected at least one line with references");
 }
 
 #[test]
@@ -309,7 +260,6 @@ fn cli_skips_gitignored_when_scanning_directory() {
 
     let mut cmd = cargo_bin_cmd!("cruxlines");
     cmd.current_dir(&dir);
-    cmd.args(["-u"]);
     let output = cmd.assert().success().get_output().stdout.clone();
     let output = String::from_utf8(output).expect("utf8 output");
     assert!(

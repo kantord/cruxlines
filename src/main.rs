@@ -7,8 +7,6 @@ use cruxlines::{cruxlines, CruxlinesError, Ecosystem, OutputRow};
 
 #[derive(Debug, Parser)]
 struct Cli {
-    #[arg(short = 'u', long = "references")]
-    references: bool,
     #[arg(short = 'e', long = "ecosystem", value_enum)]
     ecosystems: Vec<EcosystemArg>,
 }
@@ -46,50 +44,22 @@ fn main() {
     };
 
     for row in &output_rows {
-        print_row(&row, cli.references, &repo_root);
+        print_row(&row, &repo_root);
     }
 
 }
 
-fn print_row(row: &OutputRow, include_references: bool, repo_root: &std::path::Path) {
-    if include_references {
-        println!(
-            "{:.6}\t{:.6}\t{:.6}\t{}\t{}:{}:{}{}",
-            row.rank,
-            row.local_score,
-            row.file_rank,
-            row.definition.name,
-            display_path(&row.definition.path, repo_root),
-            row.definition.line,
-            row.definition.column,
-            format_usage_list(&row.references, repo_root)
-        );
-    } else {
-        println!(
-            "{:.6}\t{:.6}\t{:.6}\t{}\t{}:{}:{}",
-            row.rank,
-            row.local_score,
-            row.file_rank,
-            row.definition.name,
-            display_path(&row.definition.path, repo_root),
-            row.definition.line,
-            row.definition.column
-        );
-    }
-}
-
-fn format_usage_list(usages: &[cruxlines::Location], repo_root: &std::path::Path) -> String {
-    let mut out = String::new();
-    for usage in usages {
-        out.push('\t');
-        out.push_str(&format!(
-            "{}:{}:{}",
-            display_path(&usage.path, repo_root),
-            usage.line,
-            usage.column
-        ));
-    }
-    out
+fn print_row(row: &OutputRow, repo_root: &std::path::Path) {
+    println!(
+        "{:.6}\t{:.6}\t{:.6}\t{}\t{}:{}:{}",
+        row.rank,
+        row.local_score,
+        row.file_rank,
+        row.definition.name,
+        display_path(&row.definition.path, repo_root),
+        row.definition.line,
+        row.definition.column
+    );
 }
 
 fn display_path(path: &std::path::Path, repo_root: &std::path::Path) -> String {
