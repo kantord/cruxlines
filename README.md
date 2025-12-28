@@ -91,6 +91,8 @@ Each line is tab-separated:
 score    local_score    file_rank    symbol    def_path:line:col
 ```
 
+Reference locations are heuristic and may include false positives.
+
 ## Supported languages
 
 - Python (`.py`)

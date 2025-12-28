@@ -12,6 +12,7 @@ pub struct OutputRow {
     pub local_score: f64,
     pub file_rank: f64,
     pub definition: Location,
+    /// Heuristic reference locations; may include false positives.
     pub references: Vec<Location>,
 }
 
