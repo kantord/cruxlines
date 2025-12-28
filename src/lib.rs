@@ -1,9 +1,11 @@
 mod analysis;
 mod find_references;
 mod graph;
+mod io;
 mod languages;
 
-pub use analysis::{cruxlines, cruxlines_with_repo_root, OutputRow};
+pub use analysis::{cruxlines, cruxlines_from_inputs, OutputRow};
+pub use io::CruxlinesError;
 pub use find_references::Location;
 pub use languages::Ecosystem;
 

@@ -24,6 +24,25 @@ fn cli_outputs_reference_edges_for_python_files() {
 }
 
 #[test]
+fn library_cruxlines_scans_repo_root() {
+    let dir = temp_dir_path("cruxlines-lib-root");
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    git_init(&dir);
+    std::fs::write(dir.join("main.py"), "def add():\n    return 1\n\nadd()\n")
+        .expect("write main");
+    git_commit(&dir, "init", "2001-01-01T00:00:00Z");
+
+    let ecosystems = std::collections::HashSet::from([cruxlines::Ecosystem::Python]);
+    let rows = cruxlines::cruxlines(&dir, &ecosystems).expect("cruxlines");
+    assert!(
+        rows.iter().any(|row| row.definition.name == "add"),
+        "expected add definition from repo scan"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn cli_outputs_non_uniform_pagerank_scores() {
     let output = run_cli_output();
     let mut min = f64::INFINITY;

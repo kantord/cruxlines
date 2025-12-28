@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use cruxlines::{cruxlines, OutputRow};
+use cruxlines::{cruxlines_from_inputs, OutputRow};
 
 fn read_fixture(path: impl AsRef<Path>) -> (PathBuf, String) {
     let path = path.as_ref().to_path_buf();
@@ -32,7 +32,7 @@ fn finds_python_cross_file_references() {
         read_fixture("src/languages/python/fixtures/models.py"),
     ];
 
-    let rows = cruxlines(files);
+    let rows = cruxlines_from_inputs(files, None);
 
     assert!(
         has_reference(&rows, "add", "src/languages/python/fixtures/utils.py", "src/languages/python/fixtures/main.py"),
@@ -52,7 +52,7 @@ fn finds_javascript_cross_file_references() {
         read_fixture("src/languages/javascript/fixtures/models.js"),
     ];
 
-    let rows = cruxlines(files);
+    let rows = cruxlines_from_inputs(files, None);
 
     assert!(
         has_reference(&rows, "add", "src/languages/javascript/fixtures/utils.js", "src/languages/javascript/fixtures/index.js"),
@@ -72,7 +72,7 @@ fn finds_rust_cross_file_references() {
         read_fixture("src/languages/rust/fixtures/models.rs"),
     ];
 
-    let rows = cruxlines(files);
+    let rows = cruxlines_from_inputs(files, None);
 
     assert!(
         has_reference(&rows, "add", "src/languages/rust/fixtures/utils.rs", "src/languages/rust/fixtures/main.rs"),
@@ -92,7 +92,7 @@ fn finds_typescript_cross_file_references() {
         read_fixture("src/languages/javascript/fixtures/models.ts"),
     ];
 
-    let rows = cruxlines(files);
+    let rows = cruxlines_from_inputs(files, None);
 
     assert!(
         has_reference(&rows, "add", "src/languages/javascript/fixtures/utils.ts", "src/languages/javascript/fixtures/index.ts"),
@@ -111,7 +111,7 @@ fn finds_tsx_cross_file_references() {
         read_fixture("src/languages/javascript/fixtures/components.tsx"),
     ];
 
-    let rows = cruxlines(files);
+    let rows = cruxlines_from_inputs(files, None);
 
     assert!(
         has_reference(&rows, "Button", "src/languages/javascript/fixtures/components.tsx", "src/languages/javascript/fixtures/index.tsx"),
@@ -133,7 +133,7 @@ fn finds_cross_language_references_within_ecosystem() {
         ),
     ];
 
-    let rows = cruxlines(files);
+    let rows = cruxlines_from_inputs(files, None);
 
     assert!(
         has_reference(&rows, "add", "utils.ts", "main.js"),
@@ -154,7 +154,7 @@ fn does_not_cross_language_references() {
         ),
     ];
 
-    let rows = cruxlines(files);
+    let rows = cruxlines_from_inputs(files, None);
     for row in &rows {
         let def_ext = extension(&row.definition.path);
         for reference in &row.references {
@@ -181,7 +181,7 @@ fn ignores_non_exported_javascript_definitions() {
         ),
     ];
 
-    let rows = cruxlines(files);
+    let rows = cruxlines_from_inputs(files, None);
     assert!(
         !rows.iter().any(|row| row.definition.name == "foo"),
         "expected non-exported foo to be ignored"
@@ -195,7 +195,7 @@ fn ignores_nested_python_definitions() {
         "def outer():\n    def inner():\n        return 1\n    return inner()\n".to_string(),
     )];
 
-    let rows = cruxlines(files);
+    let rows = cruxlines_from_inputs(files, None);
     assert!(
         !rows.iter().any(|row| row.definition.name == "inner"),
         "expected nested inner to be ignored"
@@ -221,7 +221,7 @@ fn ties_are_sorted_by_definition_location() {
     }
     files.push((PathBuf::from("use.py"), use_lines));
 
-    let rows = cruxlines(files);
+    let rows = cruxlines_from_inputs(files, None);
     let mut expected = rows.clone();
     expected.sort_by(|a, b| {
         b.rank

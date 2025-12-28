@@ -1,11 +1,9 @@
 use std::path::PathBuf;
 use std::process;
+
 use clap::{Parser, ValueEnum};
 
-mod cli_io;
-
-use cruxlines::{cruxlines_with_repo_root, Ecosystem, OutputRow};
-use cli_io::{gather_inputs, CliIoError};
+use cruxlines::{cruxlines, CruxlinesError, Ecosystem, OutputRow};
 
 #[derive(Debug, Parser)]
 struct Cli {
@@ -39,14 +37,13 @@ fn main() {
         process::exit(1);
     };
     let ecosystems = selected_ecosystems(&cli.ecosystems);
-    let inputs = match gather_inputs(&repo_root, &ecosystems) {
-        Ok(inputs) => inputs,
+    let output_rows = match cruxlines(&repo_root, &ecosystems) {
+        Ok(rows) => rows,
         Err(err) => {
             report_error(err);
             process::exit(1);
         }
     };
-    let output_rows = cruxlines_with_repo_root(Some(repo_root.clone()), inputs);
 
     for row in &output_rows {
         print_row(&row, cli.references, &repo_root);
@@ -102,9 +99,9 @@ fn display_path(path: &std::path::Path, repo_root: &std::path::Path) -> String {
     }
 }
 
-fn report_error(err: CliIoError) {
+fn report_error(err: CruxlinesError) {
     match err {
-        CliIoError::ReadFile { path, source } => {
+        CruxlinesError::ReadFile { path, source } => {
             eprintln!("cruxlines: failed to read {}: {source}", path.display());
         }
     }

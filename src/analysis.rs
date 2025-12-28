@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use crate::find_references::{find_references, Location, ReferenceEdge};
 use crate::graph::build_file_graph;
 use crate::languages::Ecosystem;
+use crate::io::{gather_inputs, CruxlinesError};
 
 #[derive(Debug, Clone)]
 pub struct OutputRow {
@@ -14,21 +15,19 @@ pub struct OutputRow {
     pub references: Vec<Location>,
 }
 
-pub fn cruxlines<I>(inputs: I) -> Vec<OutputRow>
-where
-    I: IntoIterator<Item = (PathBuf, String)>,
-{
-    let repo_root = std::env::current_dir()
-        .ok()
-        .and_then(|cwd| find_repo_root(&cwd));
-    cruxlines_with_repo_root(repo_root, inputs)
+pub fn cruxlines(
+    repo_root: &PathBuf,
+    ecosystems: &std::collections::HashSet<Ecosystem>,
+) -> Result<Vec<OutputRow>, CruxlinesError> {
+    let inputs = gather_inputs(repo_root, ecosystems)?;
+    Ok(cruxlines_from_inputs(inputs, Some(repo_root.clone())))
 }
 
-pub fn cruxlines_with_repo_root<I>(repo_root: Option<PathBuf>, inputs: I) -> Vec<OutputRow>
-where
-    I: IntoIterator<Item = (PathBuf, String)>,
-{
-    let inputs: Vec<(PathBuf, String)> = inputs.into_iter().collect();
+#[doc(hidden)]
+pub fn cruxlines_from_inputs(
+    inputs: Vec<(PathBuf, String)>,
+    repo_root: Option<PathBuf>,
+) -> Vec<OutputRow> {
     let (edges, frecency) = compute_edges_and_frecency(inputs, repo_root);
 
     let grouped_by_ecosystem = group_edges_by_ecosystem(edges);
@@ -174,17 +173,9 @@ fn frecency_scores(repo_root: Option<&std::path::Path>) -> HashMap<PathBuf, f64>
     out
 }
 
-fn find_repo_root(start: &std::path::Path) -> Option<PathBuf> {
-    for ancestor in start.ancestors() {
-        if ancestor.join(".git").is_dir() {
-            return Some(ancestor.to_path_buf());
-        }
-    }
-    None
-}
 #[cfg(test)]
 mod tests {
-    use super::{cruxlines, group_edges_by_ecosystem};
+    use super::{cruxlines_from_inputs, group_edges_by_ecosystem};
     use crate::find_references::{Location, ReferenceEdge};
     use crate::languages::Ecosystem;
     use std::path::PathBuf;
@@ -205,7 +196,7 @@ mod tests {
                 std::fs::read_to_string("src/languages/python/fixtures/models.py").expect("read"),
             ),
         ];
-        let rows = cruxlines(files);
+        let rows = cruxlines_from_inputs(files, None);
         assert!(!rows.is_empty());
         assert!(rows.iter().any(|row| row.definition.name == "add"));
     }
@@ -222,7 +213,7 @@ mod tests {
                 "from a import foo, bar\n\nfoo()\nbar()\n".to_string(),
             ),
         ];
-        let rows = cruxlines(inputs);
+        let rows = cruxlines_from_inputs(inputs, None);
         let foo_scores: Vec<f64> = rows
             .iter()
             .filter(|row| row.definition.name == "foo")
@@ -255,7 +246,7 @@ mod tests {
                 "from a import foo\nfrom b import foo\n\nfoo()\n".to_string(),
             ),
         ];
-        let rows = cruxlines(inputs);
+        let rows = cruxlines_from_inputs(inputs, None);
         let a_score = rows
             .iter()
             .find(|row| row.definition.path.ends_with("a.py"))
