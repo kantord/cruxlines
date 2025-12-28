@@ -60,19 +60,9 @@ pub(crate) fn tree_sitter_language(language: Language) -> tree_sitter::Language 
     }
 }
 
-pub(crate) fn reference_kinds(language: Language) -> &'static [&'static str] {
-    match language {
-        Language::Python => python::REFERENCE_KINDS,
-        Language::JavaScript | Language::TypeScript | Language::TypeScriptReact => {
-            javascript::REFERENCE_KINDS
-        }
-        Language::Rust => rust::REFERENCE_KINDS,
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{language_for_path, reference_kinds, Language};
+    use super::{language_for_path, Language};
     use std::path::PathBuf;
 
     #[test]
@@ -117,12 +107,4 @@ mod tests {
         assert_eq!(lang, None);
     }
 
-    #[test]
-    fn rust_reference_kinds_include_type_identifier() {
-        let kinds = reference_kinds(Language::Rust);
-        assert!(
-            kinds.contains(&"type_identifier"),
-            "expected Rust reference kinds to include type_identifier"
-        );
-    }
 }

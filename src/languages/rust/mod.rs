@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use tree_sitter::Node;
 
-use crate::find_references::{record_definition, Location};
+use crate::find_references::{collect_references_by_kinds, record_definition, Location, ReferenceEdge};
 
 pub(crate) const EXTENSIONS: &[&str] = &["rs"];
 pub(crate) const REFERENCE_KINDS: &[&str] = &["identifier", "type_identifier"];
@@ -30,6 +30,27 @@ pub(crate) fn collect_definition(
         }
         _ => {}
     }
+}
+
+pub(crate) fn collect_references(
+    path: &Path,
+    source: &str,
+    tree: &tree_sitter::Tree,
+    definitions: &HashMap<String, Vec<Location>>,
+    definition_positions: &HashSet<(PathBuf, usize, usize)>,
+    ecosystem: crate::languages::Ecosystem,
+    edges: &mut Vec<ReferenceEdge>,
+) {
+    collect_references_by_kinds(
+        path,
+        source,
+        tree,
+        definitions,
+        definition_positions,
+        REFERENCE_KINDS,
+        ecosystem,
+        edges,
+    );
 }
 
 fn is_top_level(node: Node) -> bool {

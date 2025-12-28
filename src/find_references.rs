@@ -69,16 +69,39 @@ where
         }
 
         for input in inputs {
-            collect_references(
-                &input.path,
-                &input.source,
-                &input.tree,
-                &definitions,
-                &definition_positions,
-                crate::languages::reference_kinds(input.language),
-                *ecosystem,
-                &mut edges,
-            );
+            match input.language {
+                crate::languages::Language::Python => crate::languages::python::collect_references(
+                    &input.path,
+                    &input.source,
+                    &input.tree,
+                    &definitions,
+                    &definition_positions,
+                    *ecosystem,
+                    &mut edges,
+                ),
+                crate::languages::Language::JavaScript
+                | crate::languages::Language::TypeScript
+                | crate::languages::Language::TypeScriptReact => {
+                    crate::languages::javascript::collect_references(
+                        &input.path,
+                        &input.source,
+                        &input.tree,
+                        &definitions,
+                        &definition_positions,
+                        *ecosystem,
+                        &mut edges,
+                    )
+                }
+                crate::languages::Language::Rust => crate::languages::rust::collect_references(
+                    &input.path,
+                    &input.source,
+                    &input.tree,
+                    &definitions,
+                    &definition_positions,
+                    *ecosystem,
+                    &mut edges,
+                ),
+            }
         }
     }
 
@@ -138,7 +161,7 @@ fn collect_definitions(
     }
 }
 
-fn collect_references(
+pub(crate) fn collect_references_by_kinds(
     path: &Path,
     source: &str,
     tree: &Tree,
