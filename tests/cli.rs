@@ -177,6 +177,34 @@ fn cli_accepts_ecosystem_aliases() {
 }
 
 #[test]
+fn cli_outputs_paths_relative_to_repo_root() {
+    let dir = temp_dir_path("cruxlines-relpath");
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    git_init(&dir);
+    std::fs::write(dir.join("main.py"), "def add():\n    return 1\n\nadd()\n")
+        .expect("write main");
+    git_commit(&dir, "init", "2001-01-01T00:00:00Z");
+
+    let subdir = dir.join("sub");
+    std::fs::create_dir_all(&subdir).expect("create subdir");
+
+    let mut cmd = cargo_bin_cmd!("cruxlines");
+    cmd.args(["--ecosystem", "py"]).current_dir(&subdir);
+    let output = cmd.assert().success().get_output().stdout.clone();
+    let output = String::from_utf8(output).expect("utf8 output");
+    assert!(
+        output.contains("\tmain.py:1:5"),
+        "expected output paths relative to repo root, got: {output}"
+    );
+    assert!(
+        !output.contains(&dir.display().to_string()),
+        "expected output paths to avoid absolute repo root, got: {output}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn cli_skips_unknown_extension_inputs() {
     let dir = temp_dir_path("cruxlines-ignore-ext");
     std::fs::create_dir_all(&dir).expect("create temp dir");
