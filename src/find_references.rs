@@ -58,48 +58,85 @@ where
         let mut definition_positions: HashSet<(PathBuf, usize, usize)> = HashSet::new();
 
         for input in inputs {
-            collect_definitions(
-                &input.path,
-                &input.source,
-                &input.language,
-                &input.tree,
-                &mut definitions,
-                &mut definition_positions,
-            );
-        }
-
-        for input in inputs {
             match input.language {
-                crate::languages::Language::Python => crate::languages::python::collect_references(
+                crate::languages::Language::Python => crate::languages::python::emit_definitions(
                     &input.path,
                     &input.source,
                     &input.tree,
-                    &definitions,
-                    &definition_positions,
-                    *ecosystem,
-                    &mut edges,
+                    |location| record_definition(
+                        location,
+                        &mut definitions,
+                        &mut definition_positions,
+                    ),
                 ),
                 crate::languages::Language::JavaScript
                 | crate::languages::Language::TypeScript
                 | crate::languages::Language::TypeScriptReact => {
-                    crate::languages::javascript::collect_references(
+                    crate::languages::javascript::emit_definitions(
                         &input.path,
                         &input.source,
                         &input.tree,
-                        &definitions,
-                        &definition_positions,
-                        *ecosystem,
-                        &mut edges,
+                        |location| record_definition(
+                            location,
+                            &mut definitions,
+                            &mut definition_positions,
+                        ),
                     )
                 }
-                crate::languages::Language::Rust => crate::languages::rust::collect_references(
+                crate::languages::Language::Rust => crate::languages::rust::emit_definitions(
                     &input.path,
                     &input.source,
                     &input.tree,
-                    &definitions,
-                    &definition_positions,
-                    *ecosystem,
-                    &mut edges,
+                    |location| record_definition(
+                        location,
+                        &mut definitions,
+                        &mut definition_positions,
+                    ),
+                ),
+            }
+        }
+
+        for input in inputs {
+            match input.language {
+                crate::languages::Language::Python => crate::languages::python::emit_references(
+                    &input.path,
+                    &input.source,
+                    &input.tree,
+                    |location| record_reference(
+                        location,
+                        *ecosystem,
+                        &definitions,
+                        &definition_positions,
+                        &mut edges,
+                    ),
+                ),
+                crate::languages::Language::JavaScript
+                | crate::languages::Language::TypeScript
+                | crate::languages::Language::TypeScriptReact => {
+                    crate::languages::javascript::emit_references(
+                        &input.path,
+                        &input.source,
+                        &input.tree,
+                        |location| record_reference(
+                            location,
+                            *ecosystem,
+                            &definitions,
+                            &definition_positions,
+                            &mut edges,
+                        ),
+                    )
+                }
+                crate::languages::Language::Rust => crate::languages::rust::emit_references(
+                    &input.path,
+                    &input.source,
+                    &input.tree,
+                    |location| record_reference(
+                        location,
+                        *ecosystem,
+                        &definitions,
+                        &definition_positions,
+                        &mut edges,
+                    ),
                 ),
             }
         }
@@ -115,118 +152,17 @@ fn parse_tree(language: &crate::languages::Language, source: &str) -> Option<Tre
     parser.parse(source, None)
 }
 
-fn collect_definitions(
-    path: &Path,
-    source: &str,
-    language: &crate::languages::Language,
-    tree: &Tree,
-    definitions: &mut HashMap<String, Vec<Location>>,
-    definition_positions: &mut HashSet<(PathBuf, usize, usize)>,
-) {
+pub(crate) fn walk_tree(tree: &Tree, mut visit: impl FnMut(Node)) {
     let root = tree.root_node();
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
-        match language {
-            crate::languages::Language::Python => crate::languages::python::collect_definition(
-                path,
-                source,
-                node,
-                definitions,
-                definition_positions,
-            ),
-            crate::languages::Language::JavaScript
-            | crate::languages::Language::TypeScript
-            | crate::languages::Language::TypeScriptReact => {
-                crate::languages::javascript::collect_definition(
-                    path,
-                    source,
-                    node,
-                    definitions,
-                    definition_positions,
-                )
-            }
-            crate::languages::Language::Rust => crate::languages::rust::collect_definition(
-                path,
-                source,
-                node,
-                definitions,
-                definition_positions,
-            ),
-        }
+        visit(node);
         for i in 0..node.child_count() {
             if let Some(child) = node.child(i) {
                 stack.push(child);
             }
         }
     }
-}
-
-pub(crate) fn collect_references_by_kinds(
-    path: &Path,
-    source: &str,
-    tree: &Tree,
-    definitions: &HashMap<String, Vec<Location>>,
-    definition_positions: &HashSet<(PathBuf, usize, usize)>,
-    reference_kinds: &[&str],
-    ecosystem: crate::languages::Ecosystem,
-    edges: &mut Vec<ReferenceEdge>,
-) {
-    let root = tree.root_node();
-    let mut stack = vec![root];
-    while let Some(node) = stack.pop() {
-        if reference_kinds.contains(&node.kind()) {
-            let (line, column) = position(node);
-            if !definition_positions.contains(&(path.to_path_buf(), line, column)) {
-                if let Ok(name) = node.utf8_text(source.as_bytes()) {
-                    if let Some(defs) = definitions.get(name) {
-                        let usage = Location {
-                            path: path.to_path_buf(),
-                            line,
-                            column,
-                            name: name.to_string(),
-                        };
-                        for def in defs {
-                            edges.push(ReferenceEdge {
-                                definition: def.clone(),
-                                usage: usage.clone(),
-                                ecosystem,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-        for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
-                stack.push(child);
-            }
-        }
-    }
-}
-
-pub(crate) fn record_definition(
-    path: &Path,
-    source: &str,
-    name_node: Node,
-    definitions: &mut HashMap<String, Vec<Location>>,
-    definition_positions: &mut HashSet<(PathBuf, usize, usize)>,
-) {
-    let (line, column) = position(name_node);
-    let Ok(name) = name_node.utf8_text(source.as_bytes()) else {
-        return;
-    };
-    let location = Location {
-        path: path.to_path_buf(),
-        line,
-        column,
-        name: name.to_string(),
-    };
-    let key = location.name.clone();
-    let entry = definitions.entry(key).or_default();
-    if !entry.iter().any(|item| item.path == location.path && item.line == line && item.column == column) {
-        entry.push(location);
-    }
-    definition_positions.insert((path.to_path_buf(), line, column));
 }
 
 pub(crate) fn collect_identifier_nodes<F>(node: Node, source: &str, mut on_ident: F)
@@ -254,7 +190,76 @@ where
     }
 }
 
+pub(crate) fn location_from_node(path: &Path, source: &str, node: Node) -> Option<Location> {
+    let (line, column) = position(node);
+    let name = node.utf8_text(source.as_bytes()).ok()?;
+    Some(Location {
+        path: path.to_path_buf(),
+        line,
+        column,
+        name: name.to_string(),
+    })
+}
+
+fn record_definition(
+    location: Location,
+    definitions: &mut HashMap<String, Vec<Location>>,
+    definition_positions: &mut HashSet<(PathBuf, usize, usize)>,
+) {
+    let key = location.name.clone();
+    let entry = definitions.entry(key).or_default();
+    if !entry.iter().any(|item| {
+        item.path == location.path && item.line == location.line && item.column == location.column
+    }) {
+        entry.push(location.clone());
+    }
+    definition_positions.insert((location.path, location.line, location.column));
+}
+
+fn record_reference(
+    location: Location,
+    ecosystem: crate::languages::Ecosystem,
+    definitions: &HashMap<String, Vec<Location>>,
+    definition_positions: &HashSet<(PathBuf, usize, usize)>,
+    edges: &mut Vec<ReferenceEdge>,
+) {
+    if definition_positions.contains(&(location.path.clone(), location.line, location.column)) {
+        return;
+    }
+    if let Some(defs) = definitions.get(&location.name) {
+        for def in defs {
+            edges.push(ReferenceEdge {
+                definition: def.clone(),
+                usage: location.clone(),
+                ecosystem,
+            });
+        }
+    }
+}
+
 fn position(node: Node) -> (usize, usize) {
     let pos = node.start_position();
     (pos.row + 1, pos.column + 1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::walk_tree;
+    use tree_sitter::Parser;
+
+    #[test]
+    fn walk_tree_visits_nodes() {
+        let mut parser = Parser::new();
+        let language = tree_sitter_python::LANGUAGE;
+        parser.set_language(&language.into()).expect("set language");
+        let tree = parser.parse("x = 1\n", None).expect("parse");
+
+        let mut kinds = Vec::new();
+        walk_tree(&tree, |node| {
+            kinds.push(node.kind().to_string());
+        });
+
+        assert!(kinds.contains(&"module".to_string()));
+        assert!(kinds.contains(&"identifier".to_string()));
+    }
 }
