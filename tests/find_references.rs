@@ -201,3 +201,52 @@ fn ignores_nested_python_definitions() {
         "expected nested inner to be ignored"
     );
 }
+
+#[test]
+fn ties_are_sorted_by_definition_location() {
+    let mut files = Vec::new();
+    let mut use_lines = String::new();
+    for idx in 0..8 {
+        let name = format!("symbol_{idx}");
+        let path = format!("file_{idx}.py");
+        files.push((
+            PathBuf::from(&path),
+            format!("def {name}():\n    return {idx}\n"),
+        ));
+        use_lines.push_str(&format!("from file_{idx} import {name}\n"));
+    }
+    use_lines.push('\n');
+    for idx in 0..8 {
+        use_lines.push_str(&format!("symbol_{idx}()\n"));
+    }
+    files.push((PathBuf::from("use.py"), use_lines));
+
+    let rows = cruxlines(files);
+    let mut expected = rows.clone();
+    expected.sort_by(|a, b| {
+        b.rank
+            .partial_cmp(&a.rank)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                let key_a = (
+                    &a.definition.path,
+                    a.definition.line,
+                    a.definition.column,
+                    &a.definition.name,
+                );
+                let key_b = (
+                    &b.definition.path,
+                    b.definition.line,
+                    b.definition.column,
+                    &b.definition.name,
+                );
+                key_a.cmp(&key_b)
+            })
+    });
+
+    assert_eq!(
+        rows.iter().map(|row| &row.definition.path).collect::<Vec<_>>(),
+        expected.iter().map(|row| &row.definition.path).collect::<Vec<_>>(),
+        "expected tie-breaker ordering by definition location"
+    );
+}

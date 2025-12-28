@@ -49,6 +49,21 @@ where
         b.rank
             .partial_cmp(&a.rank)
             .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                let key_a = (
+                    &a.definition.path,
+                    a.definition.line,
+                    a.definition.column,
+                    &a.definition.name,
+                );
+                let key_b = (
+                    &b.definition.path,
+                    b.definition.line,
+                    b.definition.column,
+                    &b.definition.name,
+                );
+                key_a.cmp(&key_b)
+            })
     });
     output_rows
 }
