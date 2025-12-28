@@ -4,7 +4,7 @@ use clap::{Parser, ValueEnum};
 
 mod cli_io;
 
-use cruxlines::{cruxlines, Ecosystem, OutputRow};
+use cruxlines::{cruxlines_with_repo_root, Ecosystem, OutputRow};
 use cli_io::{gather_inputs, CliIoError};
 
 #[derive(Debug, Parser)]
@@ -46,7 +46,7 @@ fn main() {
             process::exit(1);
         }
     };
-    let output_rows = cruxlines(inputs);
+    let output_rows = cruxlines_with_repo_root(Some(repo_root), inputs);
 
     for row in &output_rows {
         print_row(&row, cli.references, &cwd);

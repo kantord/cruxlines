@@ -282,6 +282,71 @@ fn cli_skips_gitignored_when_scanning_directory() {
     let _ = std::fs::remove_dir(&dir);
 }
 
+#[test]
+fn cli_uses_repo_root_for_frecency() {
+    let dir = temp_dir_path("cruxlines-frecency");
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    git_init(&dir);
+
+    std::fs::write(dir.join("defs_a.py"), "def alpha():\n    return 1\n")
+        .expect("write defs_a");
+    std::fs::write(dir.join("defs_b.py"), "def beta():\n    return 1\n")
+        .expect("write defs_b");
+    let alpha_calls = "    alpha()\n".repeat(50);
+    let beta_calls = "    beta()\n".repeat(50);
+    std::fs::write(
+        dir.join("use_alpha.py"),
+        format!("from defs_a import alpha\nfrom main import anchor\n\n\
+def helper_alpha():\n{alpha_calls}    anchor()\n"),
+    )
+    .expect("write use_alpha");
+    std::fs::write(
+        dir.join("use_beta.py"),
+        format!("from defs_b import beta\nfrom main import anchor\n\n\
+def helper_beta():\n{beta_calls}    anchor()\n"),
+    )
+    .expect("write use_beta");
+    std::fs::write(
+        dir.join("main.py"),
+        "from use_alpha import helper_alpha\nfrom use_beta import helper_beta\n\n\
+def anchor():\n    return None\n\n\
+helper_alpha()\nhelper_beta()\n",
+    )
+    .expect("write main");
+
+    git_commit(&dir, "initial", "2001-01-01T00:00:00Z");
+
+    for day in 2..=11 {
+        std::fs::write(
+            dir.join("use_alpha.py"),
+            format!(
+                "from defs_a import alpha\nfrom main import anchor\n\n\
+def helper_alpha():\n{alpha_calls}    anchor()\n\n# touch {day}\n"
+            ),
+        )
+        .expect("update use_alpha");
+        let date = format!("2001-01-{day:02}T00:00:00Z");
+        git_commit(&dir, "touch alpha", &date);
+    }
+
+    let subdir = dir.join("sub");
+    std::fs::create_dir_all(&subdir).expect("create subdir");
+
+    let mut cmd = cargo_bin_cmd!("cruxlines");
+    cmd.args(["--ecosystem", "py"]).current_dir(&subdir);
+    let output = cmd.assert().success().get_output().stdout.clone();
+    let output = String::from_utf8(output).expect("utf8 output");
+
+    let alpha_score = local_score_for_symbol(&output, "alpha").expect("alpha score");
+    let beta_score = local_score_for_symbol(&output, "beta").expect("beta score");
+    assert!(
+        alpha_score > beta_score,
+        "expected alpha to score higher due to frecency, got alpha={alpha_score} beta={beta_score}\n{output}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 fn repo_root() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
@@ -294,4 +359,61 @@ fn temp_dir_path(name: &str) -> std::path::PathBuf {
         .as_nanos();
     path.push(format!("{name}-{nanos}"));
     path
+}
+
+fn local_score_for_symbol(output: &str, symbol: &str) -> Option<f64> {
+    for line in output.lines().filter(|line| !line.trim().is_empty()) {
+        let mut parts = line.split('\t');
+        let _score_str = parts.next()?;
+        let local_str = parts.next()?;
+        let _file_rank = parts.next()?;
+        let name = parts.next()?;
+        if name == symbol {
+            return local_str.parse().ok();
+        }
+    }
+    None
+}
+
+fn git_init(dir: &std::path::Path) {
+    let status = git_command(dir)
+        .arg("init")
+        .status()
+        .expect("git init");
+    assert!(status.success(), "git init failed");
+    let status = git_command(dir)
+        .args(["config", "user.name", "Test User"])
+        .status()
+        .expect("git config user.name");
+    assert!(status.success(), "git config user.name failed");
+    let status = git_command(dir)
+        .args(["config", "user.email", "test@example.com"])
+        .status()
+        .expect("git config user.email");
+    assert!(status.success(), "git config user.email failed");
+}
+
+fn git_commit(dir: &std::path::Path, message: &str, date: &str) {
+    let status = git_command(dir).arg("add").arg(".").status().expect("git add");
+    assert!(status.success(), "git add failed");
+    let status = git_command(dir)
+        .args(["-c", "commit.gpgsign=false", "commit", "-m", message])
+        .env("GIT_AUTHOR_DATE", date)
+        .env("GIT_COMMITTER_DATE", date)
+        .env("GIT_AUTHOR_NAME", "Test User")
+        .env("GIT_AUTHOR_EMAIL", "test@example.com")
+        .env("GIT_COMMITTER_NAME", "Test User")
+        .env("GIT_COMMITTER_EMAIL", "test@example.com")
+        .status()
+        .expect("git commit");
+    assert!(status.success(), "git commit failed");
+}
+
+fn git_command(dir: &std::path::Path) -> std::process::Command {
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("-C").arg(dir);
+    cmd.env("GIT_CONFIG_GLOBAL", "/dev/null");
+    cmd.env("GIT_CONFIG_SYSTEM", "/dev/null");
+    cmd.env("GIT_TERMINAL_PROMPT", "0");
+    cmd
 }

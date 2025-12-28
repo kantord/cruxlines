@@ -18,8 +18,18 @@ pub fn cruxlines<I>(inputs: I) -> Vec<OutputRow>
 where
     I: IntoIterator<Item = (PathBuf, String)>,
 {
+    let repo_root = std::env::current_dir()
+        .ok()
+        .and_then(|cwd| find_repo_root(&cwd));
+    cruxlines_with_repo_root(repo_root, inputs)
+}
+
+pub fn cruxlines_with_repo_root<I>(repo_root: Option<PathBuf>, inputs: I) -> Vec<OutputRow>
+where
+    I: IntoIterator<Item = (PathBuf, String)>,
+{
     let inputs: Vec<(PathBuf, String)> = inputs.into_iter().collect();
-    let (edges, frecency) = compute_edges_and_frecency(inputs, || frecency_scores());
+    let (edges, frecency) = compute_edges_and_frecency(inputs, repo_root);
 
     let grouped_by_ecosystem = group_edges_by_ecosystem(edges);
     let capacity: usize = grouped_by_ecosystem.values().map(|grouped| grouped.len()).sum();
@@ -56,14 +66,11 @@ fn rank_files(grouped: &HashMap<Location, Vec<Location>>) -> HashMap<PathBuf, f6
     out
 }
 
-fn compute_edges_and_frecency<F>(
+fn compute_edges_and_frecency(
     inputs: Vec<(PathBuf, String)>,
-    frecency_fn: F,
-) -> (Vec<ReferenceEdge>, HashMap<PathBuf, f64>)
-where
-    F: FnOnce() -> HashMap<PathBuf, f64> + Send + 'static,
-{
-    let frecency_handle = std::thread::spawn(frecency_fn);
+    repo_root: Option<PathBuf>,
+) -> (Vec<ReferenceEdge>, HashMap<PathBuf, f64>) {
+    let frecency_handle = std::thread::spawn(move || frecency_scores(repo_root.as_deref()));
 
     let edges: Vec<ReferenceEdge> = find_references(inputs).collect();
 
@@ -138,8 +145,8 @@ fn group_edges_by_ecosystem(
     grouped_by_ecosystem
 }
 
-fn frecency_scores() -> HashMap<PathBuf, f64> {
-    let Ok(repo_root) = std::env::current_dir() else {
+fn frecency_scores(repo_root: Option<&std::path::Path>) -> HashMap<PathBuf, f64> {
+    let Some(repo_root) = repo_root else {
         return HashMap::new();
     };
     if !repo_root.join(".git").is_dir() {
@@ -154,10 +161,18 @@ fn frecency_scores() -> HashMap<PathBuf, f64> {
     }
     out
 }
+
+fn find_repo_root(start: &std::path::Path) -> Option<PathBuf> {
+    for ancestor in start.ancestors() {
+        if ancestor.join(".git").is_dir() {
+            return Some(ancestor.to_path_buf());
+        }
+    }
+    None
+}
 #[cfg(test)]
 mod tests {
-    use super::{compute_edges_and_frecency, cruxlines};
-    use std::collections::HashMap;
+    use super::cruxlines;
     use std::path::PathBuf;
 
     #[test]
@@ -241,22 +256,4 @@ mod tests {
         assert!(b_score > 0.0);
     }
 
-    #[test]
-    fn frecency_runs_in_background_thread() {
-        let inputs = vec![(
-            PathBuf::from("a.py"),
-            "def foo():\n    pass\n".to_string(),
-        )];
-        let main_thread = std::thread::current().id();
-        let recorded = std::sync::Arc::new(std::sync::Mutex::new(None));
-        let recorded_handle = std::sync::Arc::clone(&recorded);
-
-        let (_edges, _frecency) = compute_edges_and_frecency(inputs, move || {
-            *recorded_handle.lock().unwrap() = Some(std::thread::current().id());
-            HashMap::new()
-        });
-
-        let thread_id = recorded.lock().unwrap().expect("thread id recorded");
-        assert_ne!(thread_id, main_thread);
-    }
 }
