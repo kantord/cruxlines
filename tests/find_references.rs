@@ -141,6 +141,36 @@ fn finds_java_kotlin_cross_language_references() {
 }
 
 #[test]
+fn kotlin_references_are_not_duplicated() {
+    let files = vec![
+        (
+            PathBuf::from("utils.kt"),
+            "fun add(a: Int, b: Int): Int {\n    return a + b\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.kt"),
+            "fun main() {\n    utils.add(1, 2)\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+    let add_row = rows
+        .iter()
+        .find(|row| row.definition.name == "add")
+        .expect("expected add definition");
+    let ref_count = add_row
+        .references
+        .iter()
+        .filter(|reference| reference.path.ends_with("main.kt"))
+        .count();
+
+    assert_eq!(
+        ref_count, 1,
+        "expected one reference for add, got {ref_count}"
+    );
+}
+
+#[test]
 fn finds_rust_type_identifier_references() {
     let files = vec![
         (

@@ -1,3 +1,5 @@
+@file:JvmName("InteropKt")
+
 fun kotlinGreet(): String {
     return "hi"
 }
