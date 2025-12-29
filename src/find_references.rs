@@ -18,11 +18,10 @@ pub struct ReferenceEdge {
     pub ecosystem: crate::languages::Ecosystem,
 }
 
-struct FileInput {
-    path: PathBuf,
-    source: String,
-    language: crate::languages::Language,
-    tree: Tree,
+struct EcosystemSymbols {
+    definitions: HashMap<String, Vec<Location>>,
+    definition_positions: HashSet<(PathBuf, usize, usize)>,
+    references: Vec<Location>,
 }
 
 pub fn find_references<I, P>(files: I) -> impl Iterator<Item = ReferenceEdge>
@@ -30,7 +29,7 @@ where
     I: IntoIterator<Item = (P, String)>,
     P: Into<PathBuf>,
 {
-    let mut inputs_by_ecosystem: HashMap<crate::languages::Ecosystem, Vec<FileInput>> =
+    let mut symbols_by_ecosystem: HashMap<crate::languages::Ecosystem, EcosystemSymbols> =
         HashMap::new();
     for (path, source) in files {
         let path = path.into();
@@ -41,148 +40,115 @@ where
             continue;
         };
         let ecosystem = crate::languages::ecosystem_for_language(language);
-        inputs_by_ecosystem
-            .entry(ecosystem)
-            .or_default()
-            .push(FileInput {
-                path,
-                source,
-                language,
-                tree,
-            });
+        let entry = symbols_by_ecosystem.entry(ecosystem).or_insert_with(|| EcosystemSymbols {
+            definitions: HashMap::new(),
+            definition_positions: HashSet::new(),
+            references: Vec::new(),
+        });
+        match language {
+            crate::languages::Language::Java => crate::languages::java::emit_definitions(
+                &path,
+                &source,
+                &tree,
+                |location| record_definition(
+                    location,
+                    &mut entry.definitions,
+                    &mut entry.definition_positions,
+                ),
+            ),
+            crate::languages::Language::Kotlin => crate::languages::kotlin::emit_definitions(
+                &path,
+                &source,
+                &tree,
+                |location| record_definition(
+                    location,
+                    &mut entry.definitions,
+                    &mut entry.definition_positions,
+                ),
+            ),
+            crate::languages::Language::Python => crate::languages::python::emit_definitions(
+                &path,
+                &source,
+                &tree,
+                |location| record_definition(
+                    location,
+                    &mut entry.definitions,
+                    &mut entry.definition_positions,
+                ),
+            ),
+            crate::languages::Language::JavaScript
+            | crate::languages::Language::TypeScript
+            | crate::languages::Language::TypeScriptReact => {
+                crate::languages::javascript::emit_definitions(
+                    &path,
+                    &source,
+                    &tree,
+                    |location| record_definition(
+                        location,
+                        &mut entry.definitions,
+                        &mut entry.definition_positions,
+                    ),
+                )
+            }
+            crate::languages::Language::Rust => crate::languages::rust::emit_definitions(
+                &path,
+                &source,
+                &tree,
+                |location| record_definition(
+                    location,
+                    &mut entry.definitions,
+                    &mut entry.definition_positions,
+                ),
+            ),
+        }
+        match language {
+            crate::languages::Language::Java => crate::languages::java::emit_references(
+                &path,
+                &source,
+                &tree,
+                |location| entry.references.push(location),
+            ),
+            crate::languages::Language::Kotlin => crate::languages::kotlin::emit_references(
+                &path,
+                &source,
+                &tree,
+                |location| entry.references.push(location),
+            ),
+            crate::languages::Language::Python => crate::languages::python::emit_references(
+                &path,
+                &source,
+                &tree,
+                |location| entry.references.push(location),
+            ),
+            crate::languages::Language::JavaScript
+            | crate::languages::Language::TypeScript
+            | crate::languages::Language::TypeScriptReact => {
+                crate::languages::javascript::emit_references(
+                    &path,
+                    &source,
+                    &tree,
+                    |location| entry.references.push(location),
+                )
+            }
+            crate::languages::Language::Rust => crate::languages::rust::emit_references(
+                &path,
+                &source,
+                &tree,
+                |location| entry.references.push(location),
+            ),
+        }
     }
 
     let mut edges = Vec::new();
-    for (ecosystem, inputs) in &inputs_by_ecosystem {
-        let mut definitions: HashMap<String, Vec<Location>> = HashMap::new();
-        let mut definition_positions: HashSet<(PathBuf, usize, usize)> = HashSet::new();
-
-        for input in inputs {
-            match input.language {
-                crate::languages::Language::Java => crate::languages::java::emit_definitions(
-                    &input.path,
-                    &input.source,
-                    &input.tree,
-                    |location| record_definition(
-                        location,
-                        &mut definitions,
-                        &mut definition_positions,
-                    ),
-                ),
-                crate::languages::Language::Kotlin => crate::languages::kotlin::emit_definitions(
-                    &input.path,
-                    &input.source,
-                    &input.tree,
-                    |location| record_definition(
-                        location,
-                        &mut definitions,
-                        &mut definition_positions,
-                    ),
-                ),
-                crate::languages::Language::Python => crate::languages::python::emit_definitions(
-                    &input.path,
-                    &input.source,
-                    &input.tree,
-                    |location| record_definition(
-                        location,
-                        &mut definitions,
-                        &mut definition_positions,
-                    ),
-                ),
-                crate::languages::Language::JavaScript
-                | crate::languages::Language::TypeScript
-                | crate::languages::Language::TypeScriptReact => {
-                    crate::languages::javascript::emit_definitions(
-                        &input.path,
-                        &input.source,
-                        &input.tree,
-                        |location| record_definition(
-                            location,
-                            &mut definitions,
-                            &mut definition_positions,
-                        ),
-                    )
-                }
-                crate::languages::Language::Rust => crate::languages::rust::emit_definitions(
-                    &input.path,
-                    &input.source,
-                    &input.tree,
-                    |location| record_definition(
-                        location,
-                        &mut definitions,
-                        &mut definition_positions,
-                    ),
-                ),
-            }
-        }
-
-        for input in inputs {
-            match input.language {
-                crate::languages::Language::Java => crate::languages::java::emit_references(
-                    &input.path,
-                    &input.source,
-                    &input.tree,
-                    |location| record_reference(
-                        location,
-                        *ecosystem,
-                        &definitions,
-                        &definition_positions,
-                        &mut edges,
-                    ),
-                ),
-                crate::languages::Language::Kotlin => crate::languages::kotlin::emit_references(
-                    &input.path,
-                    &input.source,
-                    &input.tree,
-                    |location| record_reference(
-                        location,
-                        *ecosystem,
-                        &definitions,
-                        &definition_positions,
-                        &mut edges,
-                    ),
-                ),
-                crate::languages::Language::Python => crate::languages::python::emit_references(
-                    &input.path,
-                    &input.source,
-                    &input.tree,
-                    |location| record_reference(
-                        location,
-                        *ecosystem,
-                        &definitions,
-                        &definition_positions,
-                        &mut edges,
-                    ),
-                ),
-                crate::languages::Language::JavaScript
-                | crate::languages::Language::TypeScript
-                | crate::languages::Language::TypeScriptReact => {
-                    crate::languages::javascript::emit_references(
-                        &input.path,
-                        &input.source,
-                        &input.tree,
-                        |location| record_reference(
-                            location,
-                            *ecosystem,
-                            &definitions,
-                            &definition_positions,
-                            &mut edges,
-                        ),
-                    )
-                }
-                crate::languages::Language::Rust => crate::languages::rust::emit_references(
-                    &input.path,
-                    &input.source,
-                    &input.tree,
-                    |location| record_reference(
-                        location,
-                        *ecosystem,
-                        &definitions,
-                        &definition_positions,
-                        &mut edges,
-                    ),
-                ),
-            }
+    for (ecosystem, symbols) in &symbols_by_ecosystem {
+        for reference in &symbols.references {
+            record_reference(
+                reference.clone(),
+                *ecosystem,
+                &symbols.definitions,
+                &symbols.definition_positions,
+                &mut edges,
+            );
         }
     }
 
