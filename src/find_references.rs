@@ -59,6 +59,26 @@ where
 
         for input in inputs {
             match input.language {
+                crate::languages::Language::Java => crate::languages::java::emit_definitions(
+                    &input.path,
+                    &input.source,
+                    &input.tree,
+                    |location| record_definition(
+                        location,
+                        &mut definitions,
+                        &mut definition_positions,
+                    ),
+                ),
+                crate::languages::Language::Kotlin => crate::languages::kotlin::emit_definitions(
+                    &input.path,
+                    &input.source,
+                    &input.tree,
+                    |location| record_definition(
+                        location,
+                        &mut definitions,
+                        &mut definition_positions,
+                    ),
+                ),
                 crate::languages::Language::Python => crate::languages::python::emit_definitions(
                     &input.path,
                     &input.source,
@@ -98,6 +118,30 @@ where
 
         for input in inputs {
             match input.language {
+                crate::languages::Language::Java => crate::languages::java::emit_references(
+                    &input.path,
+                    &input.source,
+                    &input.tree,
+                    |location| record_reference(
+                        location,
+                        *ecosystem,
+                        &definitions,
+                        &definition_positions,
+                        &mut edges,
+                    ),
+                ),
+                crate::languages::Language::Kotlin => crate::languages::kotlin::emit_references(
+                    &input.path,
+                    &input.source,
+                    &input.tree,
+                    |location| record_reference(
+                        location,
+                        *ecosystem,
+                        &definitions,
+                        &definition_positions,
+                        &mut edges,
+                    ),
+                ),
                 crate::languages::Language::Python => crate::languages::python::emit_references(
                     &input.path,
                     &input.source,

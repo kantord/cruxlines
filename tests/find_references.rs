@@ -85,6 +85,42 @@ fn finds_rust_cross_file_references() {
 }
 
 #[test]
+fn finds_java_cross_file_references() {
+    let files = vec![
+        read_fixture("src/languages/java/fixtures/Main.java"),
+        read_fixture("src/languages/java/fixtures/Models.java"),
+        read_fixture("src/languages/java/fixtures/Utils.java"),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "User", "src/languages/java/fixtures/Models.java", "src/languages/java/fixtures/Main.java"),
+        "expected reference to Models.User from Main.java"
+    );
+}
+
+#[test]
+fn finds_kotlin_cross_file_references() {
+    let files = vec![
+        read_fixture("src/languages/kotlin/fixtures/main.kt"),
+        read_fixture("src/languages/kotlin/fixtures/models.kt"),
+        read_fixture("src/languages/kotlin/fixtures/utils.kt"),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "add", "src/languages/kotlin/fixtures/utils.kt", "src/languages/kotlin/fixtures/main.kt"),
+        "expected reference to utils.add from main.kt"
+    );
+    assert!(
+        has_reference(&rows, "User", "src/languages/kotlin/fixtures/models.kt", "src/languages/kotlin/fixtures/main.kt"),
+        "expected reference to models.User from main.kt"
+    );
+}
+
+#[test]
 fn finds_rust_type_identifier_references() {
     let files = vec![
         (

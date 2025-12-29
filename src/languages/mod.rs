@@ -1,11 +1,15 @@
 use std::path::Path;
 
+pub(crate) mod java;
 pub(crate) mod javascript;
+pub(crate) mod kotlin;
 pub(crate) mod python;
 pub(crate) mod rust;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Language {
+    Java,
+    Kotlin,
     Python,
     JavaScript,
     TypeScript,
@@ -15,6 +19,7 @@ pub enum Language {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Ecosystem {
+    Java,
     Python,
     JavaScript,
     Rust,
@@ -22,6 +27,12 @@ pub enum Ecosystem {
 
 pub(crate) fn language_for_path(path: &Path) -> Option<Language> {
     let ext = path.extension().and_then(|ext| ext.to_str())?;
+    if java::EXTENSIONS.contains(&ext) {
+        return Some(Language::Java);
+    }
+    if kotlin::EXTENSIONS.contains(&ext) {
+        return Some(Language::Kotlin);
+    }
     if python::EXTENSIONS.contains(&ext) {
         return Some(Language::Python);
     }
@@ -42,6 +53,7 @@ pub(crate) fn language_for_path(path: &Path) -> Option<Language> {
 
 pub(crate) fn ecosystem_for_language(language: Language) -> Ecosystem {
     match language {
+        Language::Java | Language::Kotlin => Ecosystem::Java,
         Language::Python => Ecosystem::Python,
         Language::JavaScript | Language::TypeScript | Language::TypeScriptReact => {
             Ecosystem::JavaScript
@@ -52,6 +64,8 @@ pub(crate) fn ecosystem_for_language(language: Language) -> Ecosystem {
 
 pub(crate) fn tree_sitter_language(language: Language) -> tree_sitter::Language {
     match language {
+        Language::Java => java::language(),
+        Language::Kotlin => kotlin::language(),
         Language::Python => python::language(),
         Language::JavaScript => javascript::language(),
         Language::TypeScript => javascript::language_typescript(),
@@ -99,6 +113,24 @@ mod tests {
     fn recognizes_rust_extension() {
         let lang = language_for_path(&PathBuf::from("file.rs"));
         assert_eq!(lang, Some(Language::Rust));
+    }
+
+    #[test]
+    fn recognizes_java_extension() {
+        let lang = language_for_path(&PathBuf::from("file.java"));
+        assert_eq!(lang, Some(Language::Java));
+    }
+
+    #[test]
+    fn recognizes_kotlin_extension() {
+        let lang = language_for_path(&PathBuf::from("file.kt"));
+        assert_eq!(lang, Some(Language::Kotlin));
+    }
+
+    #[test]
+    fn recognizes_kotlin_script_extension() {
+        let lang = language_for_path(&PathBuf::from("file.kts"));
+        assert_eq!(lang, Some(Language::Kotlin));
     }
 
     #[test]

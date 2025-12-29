@@ -62,6 +62,12 @@ Shorthand aliases are supported (`py`, `js`, `ts`, `tsx`, `rs`):
 cruxlines -e py
 ```
 
+Java/Kotlin use the `java` ecosystem (alias `jvm`):
+
+```
+cruxlines -e java
+```
+
 Include score metadata in the output:
 
 ```
@@ -100,9 +106,11 @@ Reference detection is heuristic and may include false positives.
 
 ## Supported languages
 
+- Java (`.java`)
 - Python (`.py`)
 - JavaScript (`.js`, `.jsx`)
 - TypeScript (`.ts`, `.tsx`)
+- Kotlin (`.kt`, `.kts`)
 - Rust (`.rs`)
 
 ## Git ignore behavior
