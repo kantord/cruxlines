@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::find_references::{find_references, Location, ReferenceEdge};
+use crate::find_references::{find_references, Location, ReferenceEdge, ReferenceScan};
 use crate::graph::build_file_graph;
 use crate::languages::Ecosystem;
-use crate::io::{gather_inputs, CruxlinesError};
+use crate::io::{gather_paths, CruxlinesError};
 
 #[derive(Debug, Clone)]
 pub struct OutputRow {
@@ -12,6 +12,7 @@ pub struct OutputRow {
     pub local_score: f64,
     pub file_rank: f64,
     pub definition: Location,
+    /// Definition line text from the input snapshot.
     pub definition_line: String,
     /// Heuristic reference locations; may include false positives.
     pub references: Vec<Location>,
@@ -21,8 +22,8 @@ pub fn cruxlines(
     repo_root: &PathBuf,
     ecosystems: &std::collections::HashSet<Ecosystem>,
 ) -> Result<Vec<OutputRow>, CruxlinesError> {
-    let inputs = gather_inputs(repo_root, ecosystems)?;
-    Ok(cruxlines_from_inputs(inputs, Some(repo_root.clone())))
+    let paths = gather_paths(repo_root, ecosystems);
+    cruxlines_from_paths(paths, Some(repo_root.clone()))
 }
 
 #[doc(hidden)]
@@ -30,10 +31,18 @@ pub fn cruxlines_from_inputs(
     inputs: Vec<(PathBuf, String)>,
     repo_root: Option<PathBuf>,
 ) -> Vec<OutputRow> {
-    let line_cache = build_line_cache(&inputs);
-    let (edges, frecency) = compute_edges_and_frecency(inputs, repo_root);
+    let inputs = inputs.into_iter().map(Ok);
+    let (scan, frecency) = compute_edges_and_frecency(inputs, repo_root).unwrap_or_else(|_| {
+        (
+            ReferenceScan {
+                edges: Vec::new(),
+                definition_lines: HashMap::new(),
+            },
+            HashMap::new(),
+        )
+    });
 
-    let grouped_by_ecosystem = group_edges_by_ecosystem(edges);
+    let grouped_by_ecosystem = group_edges_by_ecosystem(scan.edges);
     let capacity: usize = grouped_by_ecosystem.values().map(|grouped| grouped.len()).sum();
     let mut output_rows = Vec::with_capacity(capacity);
     for grouped in grouped_by_ecosystem.into_values() {
@@ -49,7 +58,7 @@ pub fn cruxlines_from_inputs(
             &file_ranks,
             &frecency,
             &name_counts,
-            &line_cache,
+            &scan.definition_lines,
         ));
     }
 
@@ -76,6 +85,57 @@ pub fn cruxlines_from_inputs(
     output_rows
 }
 
+pub fn cruxlines_from_paths(
+    paths: Vec<PathBuf>,
+    repo_root: Option<PathBuf>,
+) -> Result<Vec<OutputRow>, CruxlinesError> {
+    let inputs = paths.into_iter().filter_map(read_input);
+    let (scan, frecency) = compute_edges_and_frecency(inputs, repo_root)?;
+
+    let grouped_by_ecosystem = group_edges_by_ecosystem(scan.edges);
+    let capacity: usize = grouped_by_ecosystem.values().map(|grouped| grouped.len()).sum();
+    let mut output_rows = Vec::with_capacity(capacity);
+    for grouped in grouped_by_ecosystem.into_values() {
+        let file_ranks = rank_files(&grouped);
+
+        let mut name_counts: HashMap<String, usize> = HashMap::new();
+        for definition in grouped.keys() {
+            *name_counts.entry(definition.name.clone()).or_default() += 1;
+        }
+
+        output_rows.extend(build_rows(
+            grouped,
+            &file_ranks,
+            &frecency,
+            &name_counts,
+            &scan.definition_lines,
+        ));
+    }
+
+    output_rows.sort_by(|a, b| {
+        b.rank
+            .partial_cmp(&a.rank)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                let key_a = (
+                    &a.definition.path,
+                    a.definition.line,
+                    a.definition.column,
+                    &a.definition.name,
+                );
+                let key_b = (
+                    &b.definition.path,
+                    b.definition.line,
+                    b.definition.column,
+                    &b.definition.name,
+                );
+                key_a.cmp(&key_b)
+            })
+    });
+
+    Ok(output_rows)
+}
+
 fn rank_files(grouped: &HashMap<Location, Vec<Location>>) -> HashMap<PathBuf, f64> {
     let (graph, indices) = build_file_graph(grouped);
     if graph.node_count() == 0 {
@@ -90,16 +150,19 @@ fn rank_files(grouped: &HashMap<Location, Vec<Location>>) -> HashMap<PathBuf, f6
 }
 
 fn compute_edges_and_frecency(
-    inputs: Vec<(PathBuf, String)>,
+    inputs: impl IntoIterator<Item = Result<(PathBuf, String), CruxlinesError>>,
     repo_root: Option<PathBuf>,
-) -> (Vec<ReferenceEdge>, HashMap<PathBuf, f64>) {
+) -> Result<(ReferenceScan, HashMap<PathBuf, f64>), CruxlinesError> {
     let frecency_handle = std::thread::spawn(move || frecency_scores(repo_root.as_deref()));
 
-    let edges: Vec<ReferenceEdge> = find_references(inputs).collect();
+    let scan = find_references(inputs)?;
 
     match frecency_handle.join() {
-        Ok(frecency) => (edges, frecency),
-        Err(_) => (edges, HashMap::new()),
+        Ok(frecency) => Ok((scan, frecency)),
+        Err(_) => Ok((
+            scan,
+            HashMap::new(),
+        )),
     }
 }
 
@@ -108,7 +171,7 @@ fn build_rows(
     file_ranks: &HashMap<PathBuf, f64>,
     frecency: &HashMap<PathBuf, f64>,
     name_counts: &HashMap<String, usize>,
-    line_cache: &HashMap<PathBuf, Vec<String>>,
+    definition_lines: &HashMap<Location, String>,
 ) -> Vec<OutputRow> {
     let mut rows = Vec::with_capacity(grouped.len());
     for (definition, mut references) in grouped {
@@ -138,10 +201,9 @@ fn build_rows(
             .copied()
             .unwrap_or(0.0);
         let rank = local_score * file_rank;
-        let definition_line = line_cache
-            .get(&definition.path)
-            .and_then(|lines| lines.get(definition.line.saturating_sub(1)))
-            .map(|line| line.trim_end().to_string())
+        let definition_line = definition_lines
+            .get(&definition)
+            .cloned()
             .unwrap_or_default();
         rows.push(OutputRow {
             rank,
@@ -189,15 +251,18 @@ fn frecency_scores(repo_root: Option<&std::path::Path>) -> HashMap<PathBuf, f64>
     out
 }
 
-fn build_line_cache(inputs: &[(PathBuf, String)]) -> HashMap<PathBuf, Vec<String>> {
-    let mut cache = HashMap::new();
-    for (path, contents) in inputs {
-        cache.insert(
-            path.clone(),
-            contents.lines().map(|line| line.to_string()).collect(),
-        );
-    }
-    cache
+fn read_input(path: PathBuf) -> Option<Result<(PathBuf, String), CruxlinesError>> {
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(source) => {
+            return Some(Err(CruxlinesError::ReadFile { path, source }));
+        }
+    };
+    let contents = match String::from_utf8(bytes) {
+        Ok(contents) => contents,
+        Err(_) => return None,
+    };
+    Some(Ok((path, contents)))
 }
 
 #[cfg(test)]

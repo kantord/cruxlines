@@ -10,13 +10,13 @@ pub enum CruxlinesError {
     ReadFile { path: PathBuf, source: std::io::Error },
 }
 
-pub fn gather_inputs(
+pub fn gather_paths(
     repo_root: &PathBuf,
     ecosystems: &HashSet<Ecosystem>,
-) -> Result<Vec<(PathBuf, String)>, CruxlinesError> {
+) -> Vec<PathBuf> {
     let builder = WalkBuilder::new(repo_root);
 
-    let mut inputs = Vec::new();
+    let mut paths = Vec::new();
     for entry in builder.build() {
         let entry = match entry {
             Ok(entry) => entry,
@@ -36,18 +36,8 @@ pub fn gather_inputs(
         if !ecosystems.contains(&ecosystem) {
             continue;
         }
-        let bytes = std::fs::read(path).map_err(|source| CruxlinesError::ReadFile {
-            path: path.to_path_buf(),
-            source,
-        })?;
-        let contents = match String::from_utf8(bytes) {
-            Ok(contents) => contents,
-            Err(_) => {
-                continue;
-            }
-        };
-        inputs.push((path.to_path_buf(), contents));
+        paths.push(path.to_path_buf());
     }
 
-    Ok(inputs)
+    paths
 }

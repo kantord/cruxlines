@@ -18,20 +18,27 @@ pub struct ReferenceEdge {
     pub ecosystem: crate::languages::Ecosystem,
 }
 
+pub struct ReferenceScan {
+    pub edges: Vec<ReferenceEdge>,
+    pub definition_lines: HashMap<Location, String>,
+}
+
 struct EcosystemSymbols {
     definitions: HashMap<String, Vec<Location>>,
     definition_positions: HashSet<(PathBuf, usize, usize)>,
     references: Vec<Location>,
+    definition_lines: HashMap<Location, String>,
 }
 
-pub fn find_references<I, P>(files: I) -> impl Iterator<Item = ReferenceEdge>
+pub fn find_references<I, P>(files: I) -> Result<ReferenceScan, crate::io::CruxlinesError>
 where
-    I: IntoIterator<Item = (P, String)>,
+    I: IntoIterator<Item = Result<(P, String), crate::io::CruxlinesError>>,
     P: Into<PathBuf>,
 {
     let mut symbols_by_ecosystem: HashMap<crate::languages::Ecosystem, EcosystemSymbols> =
         HashMap::new();
-    for (path, source) in files {
+    for item in files {
+        let (path, source) = item?;
         let path = path.into();
         let Some(language) = crate::languages::language_for_path(&path) else {
             continue;
@@ -44,37 +51,47 @@ where
             definitions: HashMap::new(),
             definition_positions: HashSet::new(),
             references: Vec::new(),
+            definition_lines: HashMap::new(),
         });
         match language {
             crate::languages::Language::Java => crate::languages::java::emit_definitions(
                 &path,
                 &source,
                 &tree,
-                |location| record_definition(
-                    location,
-                    &mut entry.definitions,
-                    &mut entry.definition_positions,
-                ),
+                |location| {
+                    record_definition(
+                        location.clone(),
+                        &mut entry.definitions,
+                        &mut entry.definition_positions,
+                    );
+                    record_definition_line(&location, &source, &mut entry.definition_lines);
+                },
             ),
             crate::languages::Language::Kotlin => crate::languages::kotlin::emit_definitions(
                 &path,
                 &source,
                 &tree,
-                |location| record_definition(
-                    location,
-                    &mut entry.definitions,
-                    &mut entry.definition_positions,
-                ),
+                |location| {
+                    record_definition(
+                        location.clone(),
+                        &mut entry.definitions,
+                        &mut entry.definition_positions,
+                    );
+                    record_definition_line(&location, &source, &mut entry.definition_lines);
+                },
             ),
             crate::languages::Language::Python => crate::languages::python::emit_definitions(
                 &path,
                 &source,
                 &tree,
-                |location| record_definition(
-                    location,
-                    &mut entry.definitions,
-                    &mut entry.definition_positions,
-                ),
+                |location| {
+                    record_definition(
+                        location.clone(),
+                        &mut entry.definitions,
+                        &mut entry.definition_positions,
+                    );
+                    record_definition_line(&location, &source, &mut entry.definition_lines);
+                },
             ),
             crate::languages::Language::JavaScript
             | crate::languages::Language::TypeScript
@@ -83,22 +100,28 @@ where
                     &path,
                     &source,
                     &tree,
-                    |location| record_definition(
-                        location,
-                        &mut entry.definitions,
-                        &mut entry.definition_positions,
-                    ),
+                    |location| {
+                        record_definition(
+                            location.clone(),
+                            &mut entry.definitions,
+                            &mut entry.definition_positions,
+                        );
+                        record_definition_line(&location, &source, &mut entry.definition_lines);
+                    },
                 )
             }
             crate::languages::Language::Rust => crate::languages::rust::emit_definitions(
                 &path,
                 &source,
                 &tree,
-                |location| record_definition(
-                    location,
-                    &mut entry.definitions,
-                    &mut entry.definition_positions,
-                ),
+                |location| {
+                    record_definition(
+                        location.clone(),
+                        &mut entry.definitions,
+                        &mut entry.definition_positions,
+                    );
+                    record_definition_line(&location, &source, &mut entry.definition_lines);
+                },
             ),
         }
         match language {
@@ -140,6 +163,7 @@ where
     }
 
     let mut edges = Vec::new();
+    let mut definition_lines = HashMap::new();
     for (ecosystem, symbols) in &symbols_by_ecosystem {
         for reference in &symbols.references {
             record_reference(
@@ -150,9 +174,17 @@ where
                 &mut edges,
             );
         }
+        for (location, line) in &symbols.definition_lines {
+            definition_lines
+                .entry(location.clone())
+                .or_insert_with(|| line.clone());
+        }
     }
 
-    edges.into_iter()
+    Ok(ReferenceScan {
+        edges,
+        definition_lines,
+    })
 }
 
 fn parse_tree(language: &crate::languages::Language, source: &str) -> Option<Tree> {
@@ -250,6 +282,23 @@ fn record_reference(
 fn position(node: Node) -> (usize, usize) {
     let pos = node.start_position();
     (pos.row + 1, pos.column + 1)
+}
+
+fn record_definition_line(
+    location: &Location,
+    source: &str,
+    lines: &mut HashMap<Location, String>,
+) {
+    if lines.contains_key(location) {
+        return;
+    }
+    let text = source
+        .lines()
+        .nth(location.line.saturating_sub(1))
+        .unwrap_or("")
+        .trim_end()
+        .to_string();
+    lines.insert(location.clone(), text);
 }
 
 #[cfg(test)]
