@@ -1,7 +1,8 @@
-use assert_cmd::cargo::cargo_bin_cmd;
+use assert_cmd::cargo::{cargo_bin, cargo_bin_cmd};
 use predicates::prelude::PredicateBooleanExt;
 use predicates::Predicate;
 use predicates::str::contains;
+use std::process::Stdio;
 
 fn run_cli_output() -> String {
     let mut cmd = cargo_bin_cmd!("cruxlines");
@@ -76,6 +77,56 @@ fn cli_shows_metadata_with_flag() {
         output.contains("rank="),
         "expected metadata with --metadata, got: {output}"
     );
+}
+
+#[test]
+fn cli_uses_definition_snapshot_for_line_text() {
+    let dir = temp_dir_path("cruxlines-snapshot");
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    git_init(&dir);
+    let defs_path = dir.join("defs.py");
+    let main_path = dir.join("main.py");
+    std::fs::write(&defs_path, "def add():\n    return 1\n")
+        .expect("write defs");
+    std::fs::write(&main_path, "from defs import add\n\nadd()\n")
+        .expect("write main");
+    git_commit(&dir, "init", "2001-01-01T00:00:00Z");
+
+    let exe = cargo_bin("cruxlines");
+    let mut cmd = std::process::Command::new(exe);
+    let ready_path = dir.join("ready.txt");
+    cmd.args(["--ecosystem", "python"])
+        .current_dir(&dir)
+        .env("CRUXLINES_TEST_PAUSE_MS", "200")
+        .env("CRUXLINES_TEST_READY_FILE", &ready_path)
+        .stdout(Stdio::piped());
+    let child = cmd.spawn().expect("spawn cruxlines");
+
+    let start = std::time::Instant::now();
+    while !ready_path.exists() {
+        if start.elapsed() > std::time::Duration::from_secs(2) {
+            panic!("timeout waiting for ready file");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+
+    std::fs::write(&defs_path, "def add_changed():\n    return 2\n")
+        .expect("modify defs");
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    let output = child.wait_with_output().expect("wait output");
+    assert!(output.status.success(), "expected success");
+    let output = String::from_utf8(output.stdout).expect("utf8 output");
+    assert!(
+        output.contains("def add():"),
+        "expected output to use original line content, got: {output}"
+    );
+    assert!(
+        !output.contains("def add_changed():"),
+        "expected output to ignore modified line content, got: {output}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

@@ -12,6 +12,7 @@ pub struct OutputRow {
     pub local_score: f64,
     pub file_rank: f64,
     pub definition: Location,
+    pub definition_line: String,
     /// Heuristic reference locations; may include false positives.
     pub references: Vec<Location>,
 }
@@ -29,6 +30,7 @@ pub fn cruxlines_from_inputs(
     inputs: Vec<(PathBuf, String)>,
     repo_root: Option<PathBuf>,
 ) -> Vec<OutputRow> {
+    let line_cache = build_line_cache(&inputs);
     let (edges, frecency) = compute_edges_and_frecency(inputs, repo_root);
 
     let grouped_by_ecosystem = group_edges_by_ecosystem(edges);
@@ -42,7 +44,13 @@ pub fn cruxlines_from_inputs(
             *name_counts.entry(definition.name.clone()).or_default() += 1;
         }
 
-        output_rows.extend(build_rows(grouped, &file_ranks, &frecency, &name_counts));
+        output_rows.extend(build_rows(
+            grouped,
+            &file_ranks,
+            &frecency,
+            &name_counts,
+            &line_cache,
+        ));
     }
 
     output_rows.sort_by(|a, b| {
@@ -100,6 +108,7 @@ fn build_rows(
     file_ranks: &HashMap<PathBuf, f64>,
     frecency: &HashMap<PathBuf, f64>,
     name_counts: &HashMap<String, usize>,
+    line_cache: &HashMap<PathBuf, Vec<String>>,
 ) -> Vec<OutputRow> {
     let mut rows = Vec::with_capacity(grouped.len());
     for (definition, mut references) in grouped {
@@ -129,11 +138,17 @@ fn build_rows(
             .copied()
             .unwrap_or(0.0);
         let rank = local_score * file_rank;
+        let definition_line = line_cache
+            .get(&definition.path)
+            .and_then(|lines| lines.get(definition.line.saturating_sub(1)))
+            .map(|line| line.trim_end().to_string())
+            .unwrap_or_default();
         rows.push(OutputRow {
             rank,
             local_score,
             file_rank,
             definition,
+            definition_line,
             references,
         });
     }
@@ -172,6 +187,17 @@ fn frecency_scores(repo_root: Option<&std::path::Path>) -> HashMap<PathBuf, f64>
         out.insert(repo_root.join(path), score);
     }
     out
+}
+
+fn build_line_cache(inputs: &[(PathBuf, String)]) -> HashMap<PathBuf, Vec<String>> {
+    let mut cache = HashMap::new();
+    for (path, contents) in inputs {
+        cache.insert(
+            path.clone(),
+            contents.lines().map(|line| line.to_string()).collect(),
+        );
+    }
+    cache
 }
 
 #[cfg(test)]

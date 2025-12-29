@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process;
 
@@ -48,9 +47,17 @@ fn main() {
         }
     };
 
-    let mut line_cache: HashMap<PathBuf, Vec<String>> = HashMap::new();
+    if let Ok(ready_path) = std::env::var("CRUXLINES_TEST_READY_FILE") {
+        let _ = std::fs::write(ready_path, "ready\n");
+    }
+    if let Ok(pause_ms) = std::env::var("CRUXLINES_TEST_PAUSE_MS") {
+        if let Ok(pause_ms) = pause_ms.parse::<u64>() {
+            std::thread::sleep(std::time::Duration::from_millis(pause_ms));
+        }
+    }
+
     for row in &output_rows {
-        print_row(&row, &repo_root, &mut line_cache, cli.metadata);
+        print_row(&row, &repo_root, cli.metadata);
     }
 
 }
@@ -58,10 +65,9 @@ fn main() {
 fn print_row(
     row: &OutputRow,
     repo_root: &std::path::Path,
-    line_cache: &mut HashMap<PathBuf, Vec<String>>,
     include_metadata: bool,
 ) {
-    let line_text = line_text(&row.definition.path, row.definition.line, line_cache);
+    let line_text = row.definition_line.as_str();
     if include_metadata {
         println!(
             "{}:{}:{}: rank={:.6} local={:.6} file={:.6} name={} | {}",
@@ -90,23 +96,6 @@ fn display_path(path: &std::path::Path, repo_root: &std::path::Path) -> String {
         Ok(rel) => rel.display().to_string(),
         Err(_) => path.display().to_string(),
     }
-}
-
-fn line_text(
-    path: &std::path::Path,
-    line: usize,
-    cache: &mut HashMap<PathBuf, Vec<String>>,
-) -> String {
-    let lines = cache.entry(path.to_path_buf()).or_insert_with(|| {
-        let Ok(contents) = std::fs::read_to_string(path) else {
-            return Vec::new();
-        };
-        contents.lines().map(|line| line.to_string()).collect()
-    });
-    lines
-        .get(line.saturating_sub(1))
-        .map(|line| line.trim_end().to_string())
-        .unwrap_or_default()
 }
 
 fn report_error(err: CruxlinesError) {
