@@ -121,6 +121,26 @@ fn finds_kotlin_cross_file_references() {
 }
 
 #[test]
+fn finds_java_kotlin_cross_language_references() {
+    let files = vec![
+        read_fixture("src/languages/java/fixtures/InteropCall.java"),
+        read_fixture("src/languages/java/fixtures/JavaUser.java"),
+        read_fixture("src/languages/kotlin/fixtures/interop.kt"),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "kotlinGreet", "src/languages/kotlin/fixtures/interop.kt", "src/languages/java/fixtures/InteropCall.java"),
+        "expected reference to kotlinGreet from InteropCall.java"
+    );
+    assert!(
+        has_reference(&rows, "JavaUser", "src/languages/java/fixtures/JavaUser.java", "src/languages/kotlin/fixtures/interop.kt"),
+        "expected reference to JavaUser from interop.kt"
+    );
+}
+
+#[test]
 fn finds_rust_type_identifier_references() {
     let files = vec![
         (
