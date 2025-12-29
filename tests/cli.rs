@@ -11,15 +11,81 @@ fn run_cli_output() -> String {
     String::from_utf8(output).expect("utf8 output")
 }
 
+fn run_cli_output_with_metadata() -> String {
+    let mut cmd = cargo_bin_cmd!("cruxlines");
+    cmd.args(["--ecosystem", "python", "--metadata"])
+        .current_dir(repo_root());
+    let output = cmd.assert().success().get_output().stdout.clone();
+    String::from_utf8(output).expect("utf8 output")
+}
+
 #[test]
-fn cli_outputs_reference_edges_for_python_files() {
+fn cli_outputs_quickfix_format() {
+    let output = run_cli_output();
+    let line = output
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .expect("at least one output line");
+    let mut parts = line.splitn(4, ':');
+    let path = parts.next().expect("path");
+    let line_str = parts.next().expect("line");
+    let col_str = parts.next().expect("col");
+    let message = parts.next().expect("message");
+
+    assert!(
+        path.contains("src/languages/python/fixtures"),
+        "expected path in quickfix prefix, got: {path}"
+    );
+    assert!(line_str.parse::<usize>().is_ok(), "line number not numeric");
+    assert!(col_str.parse::<usize>().is_ok(), "column not numeric");
+    assert!(
+        !message.trim().is_empty(),
+        "expected quickfix message content, got empty message"
+    );
+}
+
+#[test]
+fn cli_includes_definition_line_content() {
     let output = run_cli_output();
     assert!(
-        contains("\tadd\t")
+        output.contains("def add(a: int, b: int) -> int:"),
+        "expected definition line content in output, got: {output}"
+    );
+}
+
+#[test]
+fn cli_omits_metadata_by_default() {
+    let output = run_cli_output();
+    for line in output.lines().filter(|line| !line.trim().is_empty()) {
+        let mut parts = line.splitn(4, ':');
+        let _path = parts.next().expect("path");
+        let _line = parts.next().expect("line");
+        let _col = parts.next().expect("col");
+        let message = parts.next().expect("message");
+        assert!(
+            !message.contains("rank="),
+            "expected no metadata by default, got: {message}"
+        );
+    }
+}
+
+#[test]
+fn cli_shows_metadata_with_flag() {
+    let output = run_cli_output_with_metadata();
+    assert!(
+        output.contains("rank="),
+        "expected metadata with --metadata, got: {output}"
+    );
+}
+
+#[test]
+fn cli_outputs_reference_edges_for_python_files() {
+    let output = run_cli_output_with_metadata();
+    assert!(
+        contains("name=add")
             .and(contains("src/languages/python/fixtures/utils.py"))
-            .and(contains("src/languages/python/fixtures/main.py"))
             .eval(&output),
-        "output did not include expected edge: {output}"
+        "output did not include expected definition: {output}"
     );
 }
 
@@ -44,14 +110,13 @@ fn library_cruxlines_scans_repo_root() {
 
 #[test]
 fn cli_outputs_non_uniform_pagerank_scores() {
-    let output = run_cli_output();
+    let output = run_cli_output_with_metadata();
     let mut min = f64::INFINITY;
     let mut max = f64::NEG_INFINITY;
     for line in output.lines().filter(|line| !line.trim().is_empty()) {
-        let Some(score_str) = line.split('\t').next() else {
+        let Some(score) = metric_from_line(line, "rank=") else {
             continue;
         };
-        let score: f64 = score_str.parse().expect("score is f64");
         if score < min {
             min = score;
         }
@@ -67,13 +132,12 @@ fn cli_outputs_non_uniform_pagerank_scores() {
 
 #[test]
 fn cli_outputs_scores_in_descending_order() {
-    let output = run_cli_output();
+    let output = run_cli_output_with_metadata();
     let mut prev = f64::INFINITY;
     for line in output.lines().filter(|line| !line.trim().is_empty()) {
-        let Some(score_str) = line.split('\t').next() else {
+        let Some(score) = metric_from_line(line, "rank=") else {
             continue;
         };
-        let score: f64 = score_str.parse().expect("score is f64");
         assert!(
             score <= prev + 1e-12,
             "scores are not in descending order: {score} after {prev}"
@@ -86,11 +150,14 @@ fn cli_outputs_scores_in_descending_order() {
 fn cli_hides_references_without_flag() {
     let output = run_cli_output();
     for line in output.lines().filter(|line| !line.trim().is_empty()) {
-        let parts: Vec<_> = line.split('\t').collect();
-        assert_eq!(
-            parts.len(),
-            5,
-            "expected 5 columns, got {parts:?}"
+        let mut parts = line.splitn(4, ':');
+        let _path = parts.next().expect("path");
+        let _line = parts.next().expect("line");
+        let _col = parts.next().expect("col");
+        let message = parts.next().expect("message");
+        assert!(
+            !message.contains("rank="),
+            "expected no metadata by default, got: {message}"
         );
     }
 }
@@ -163,7 +230,7 @@ fn cli_outputs_paths_relative_to_repo_root() {
     let output = cmd.assert().success().get_output().stdout.clone();
     let output = String::from_utf8(output).expect("utf8 output");
     assert!(
-        output.contains("\tmain.py:1:5"),
+        output.contains("main.py:1:5:"),
         "expected output paths relative to repo root, got: {output}"
     );
     assert!(
@@ -330,7 +397,8 @@ def helper_alpha():\n{alpha_calls}    anchor()\n\n# touch {day}\n"
     std::fs::create_dir_all(&subdir).expect("create subdir");
 
     let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args(["--ecosystem", "py"]).current_dir(&subdir);
+    cmd.args(["--ecosystem", "py", "--metadata"])
+        .current_dir(&subdir);
     let output = cmd.assert().success().get_output().stdout.clone();
     let output = String::from_utf8(output).expect("utf8 output");
 
@@ -360,13 +428,33 @@ fn temp_dir_path(name: &str) -> std::path::PathBuf {
 
 fn local_score_for_symbol(output: &str, symbol: &str) -> Option<f64> {
     for line in output.lines().filter(|line| !line.trim().is_empty()) {
-        let mut parts = line.split('\t');
-        let _score_str = parts.next()?;
-        let local_str = parts.next()?;
-        let _file_rank = parts.next()?;
-        let name = parts.next()?;
+        let name = name_from_line(line)?;
         if name == symbol {
-            return local_str.parse().ok();
+            return metric_from_line(line, "local=");
+        }
+    }
+    None
+}
+
+fn message_from_line(line: &str) -> Option<&str> {
+    line.splitn(4, ':').nth(3)
+}
+
+fn metric_from_line(line: &str, key: &str) -> Option<f64> {
+    let message = message_from_line(line)?;
+    for part in message.split_whitespace() {
+        if let Some(value) = part.strip_prefix(key) {
+            return value.parse().ok();
+        }
+    }
+    None
+}
+
+fn name_from_line(line: &str) -> Option<&str> {
+    let message = message_from_line(line)?;
+    for part in message.split_whitespace() {
+        if let Some(value) = part.strip_prefix("name=") {
+            return Some(value);
         }
     }
     None

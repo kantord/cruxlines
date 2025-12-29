@@ -1,8 +1,8 @@
 # cruxlines
 
 cruxlines analyzes a codebase and ranks symbol definitions by how often they are
-referenced, with a bias toward references coming from "hot" files. It outputs a
-tab-separated list that can be used to find the most central symbols in a repo.
+referenced, with a bias toward references coming from "hot" files. It outputs
+quickfix-friendly lines for jumping to definitions.
 
 ## What it does
 
@@ -10,7 +10,7 @@ tab-separated list that can be used to find the most central symbols in a repo.
 - Finds definitions and references across files.
 - Builds a file-level reference graph and computes a file rank.
 - Weights references by file rank and git frecency.
-- Outputs one line per definition, with optional reference locations.
+- Outputs one line per definition.
 
 ## How it works
 
@@ -50,12 +50,6 @@ Analyze the current repo (run from the repo root):
 cruxlines
 ```
 
-Show reference locations:
-
-```
-cruxlines -u
-```
-
 Filter by ecosystem (defaults to all):
 
 ```
@@ -66,6 +60,12 @@ Shorthand aliases are supported (`py`, `js`, `ts`, `tsx`, `rs`):
 
 ```
 cruxlines -e py
+```
+
+Include score metadata in the output:
+
+```
+cruxlines --metadata
 ```
 
 ## Library usage
@@ -85,13 +85,18 @@ let rows = cruxlines(&repo_root, &ecosystems)?;
 
 ## Output format
 
-Each line is tab-separated:
+Each line matches the Vim quickfix format and includes the definition line:
 
 ```
-score    local_score    file_rank    symbol    def_path:line:col
+path:line:col: <line>
 ```
 
-Reference locations are heuristic and may include false positives.
+With `--metadata`, the message includes the scoring fields:
+
+```
+path:line:col: rank=... local=... file=... name=... | <line>
+```
+Reference detection is heuristic and may include false positives.
 
 ## Supported languages
 
