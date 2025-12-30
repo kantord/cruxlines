@@ -47,17 +47,17 @@ fn main() {
         }
     };
 
+    // Test-only hook to coordinate snapshot timing in integration tests.
     if let Ok(ready_path) = std::env::var("CRUXLINES_TEST_READY_FILE") {
         let _ = std::fs::write(ready_path, "ready\n");
     }
-    if let Ok(pause_ms) = std::env::var("CRUXLINES_TEST_PAUSE_MS") {
-        if let Ok(pause_ms) = pause_ms.parse::<u64>() {
+    if let Ok(pause_ms) = std::env::var("CRUXLINES_TEST_PAUSE_MS")
+        && let Ok(pause_ms) = pause_ms.parse::<u64>() {
             std::thread::sleep(std::time::Duration::from_millis(pause_ms));
         }
-    }
 
     for row in &output_rows {
-        print_row(&row, &repo_root, cli.metadata);
+        print_row(row, &repo_root, cli.metadata);
     }
 
 }

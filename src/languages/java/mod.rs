@@ -23,13 +23,11 @@ pub(crate) fn emit_definitions(
         | "enum_declaration"
         | "record_declaration"
         | "annotation_type_declaration" => {
-            if is_top_level(node) {
-                if let Some(name) = node.child_by_field_name("name") {
-                    if let Some(location) = location_from_node(path, source, name) {
+            if is_top_level(node)
+                && let Some(name) = node.child_by_field_name("name")
+                    && let Some(location) = location_from_node(path, source, name) {
                         emit(location);
                     }
-                }
-            }
         }
         _ => {}
     });
@@ -42,11 +40,10 @@ pub(crate) fn emit_references(
     mut emit: impl FnMut(Location),
 ) {
     walk_tree(tree, |node| {
-        if REFERENCE_KINDS.contains(&node.kind()) {
-            if let Some(location) = location_from_node(path, source, node) {
+        if REFERENCE_KINDS.contains(&node.kind())
+            && let Some(location) = location_from_node(path, source, node) {
                 emit(location);
             }
-        }
     });
 }
 

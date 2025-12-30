@@ -241,7 +241,7 @@ fn frecency_scores(repo_root: Option<&std::path::Path>) -> HashMap<PathBuf, f64>
     if !repo_root.join(".git").is_dir() {
         return HashMap::new();
     }
-    let Ok(scores) = frecenfile::analyze_repo(&repo_root, None, None) else {
+    let Ok(scores) = frecenfile::analyze_repo(repo_root, None, None) else {
         return HashMap::new();
     };
     let mut out = HashMap::new();

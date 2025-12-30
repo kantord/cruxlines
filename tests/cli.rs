@@ -1,4 +1,4 @@
-use assert_cmd::cargo::{cargo_bin, cargo_bin_cmd};
+use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::PredicateBooleanExt;
 use predicates::Predicate;
 use predicates::str::contains;
@@ -92,7 +92,7 @@ fn cli_uses_definition_snapshot_for_line_text() {
         .expect("write main");
     git_commit(&dir, "init", "2001-01-01T00:00:00Z");
 
-    let exe = cargo_bin("cruxlines");
+    let exe = assert_cmd::cargo::cargo_bin!("cruxlines");
     let mut cmd = std::process::Command::new(exe);
     let ready_path = dir.join("ready.txt");
     cmd.args(["--ecosystem", "python"])

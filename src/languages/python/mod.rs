@@ -21,24 +21,21 @@ pub(crate) fn emit_definitions(
 ) {
     walk_tree(tree, |node| match node.kind() {
         "function_definition" | "class_definition" => {
-            if is_top_level(node) {
-                if let Some(name) = node.child_by_field_name("name") {
-                    if let Some(location) = location_from_node(path, source, name) {
+            if is_top_level(node)
+                && let Some(name) = node.child_by_field_name("name")
+                    && let Some(location) = location_from_node(path, source, name) {
                         emit(location);
                     }
-                }
-            }
         }
         "assignment" => {
-            if is_top_level(node) {
-                if let Some(left) = node.child_by_field_name("left") {
+            if is_top_level(node)
+                && let Some(left) = node.child_by_field_name("left") {
                     collect_identifier_nodes(left, source, |ident| {
                         if let Some(location) = location_from_node(path, source, ident) {
                             emit(location);
                         }
                     });
                 }
-            }
         }
         _ => {}
     });
@@ -51,11 +48,10 @@ pub(crate) fn emit_references(
     mut emit: impl FnMut(Location),
 ) {
     walk_tree(tree, |node| {
-        if REFERENCE_KINDS.contains(&node.kind()) {
-            if let Some(location) = location_from_node(path, source, node) {
+        if REFERENCE_KINDS.contains(&node.kind())
+            && let Some(location) = location_from_node(path, source, node) {
                 emit(location);
             }
-        }
     });
 }
 

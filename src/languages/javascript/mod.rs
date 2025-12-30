@@ -35,24 +35,21 @@ pub(crate) fn emit_definitions(
         | "interface_declaration"
         | "type_alias_declaration"
         | "enum_declaration" => {
-            if is_exported(node) {
-                if let Some(name) = node.child_by_field_name("name") {
-                    if let Some(location) = location_from_node(path, source, name) {
+            if is_exported(node)
+                && let Some(name) = node.child_by_field_name("name")
+                    && let Some(location) = location_from_node(path, source, name) {
                         emit(location);
                     }
-                }
-            }
         }
         "variable_declarator" => {
-            if is_exported(node) {
-                if let Some(name) = node.child_by_field_name("name") {
+            if is_exported(node)
+                && let Some(name) = node.child_by_field_name("name") {
                     collect_identifier_nodes(name, source, |ident| {
                         if let Some(location) = location_from_node(path, source, ident) {
                             emit(location);
                         }
                     });
                 }
-            }
         }
         _ => {}
     });
@@ -65,11 +62,10 @@ pub(crate) fn emit_references(
     mut emit: impl FnMut(Location),
 ) {
     walk_tree(tree, |node| {
-        if REFERENCE_KINDS.contains(&node.kind()) {
-            if let Some(location) = location_from_node(path, source, node) {
+        if REFERENCE_KINDS.contains(&node.kind())
+            && let Some(location) = location_from_node(path, source, node) {
                 emit(location);
             }
-        }
     });
 }
 

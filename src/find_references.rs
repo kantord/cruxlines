@@ -211,11 +211,10 @@ pub(crate) fn collect_identifier_nodes<F>(node: Node, source: &str, mut on_ident
 where
     F: FnMut(Node),
 {
-    if node.kind() == "identifier" {
-        if node.utf8_text(source.as_bytes()).is_ok() {
+    if node.kind() == "identifier"
+        && node.utf8_text(source.as_bytes()).is_ok() {
             on_ident(node);
         }
-    }
     let mut stack = vec![node];
     while let Some(current) = stack.pop() {
         for i in 0..current.child_count() {
