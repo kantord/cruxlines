@@ -123,69 +123,60 @@ where
     })
 }
 
+fn collect_definitions(
+    path: &PathBuf,
+    source: &str,
+    tree: &Tree,
+    language: crate::languages::Language,
+) -> (Vec<Location>, HashMap<Location, String>) {
+    let mut definitions = Vec::new();
+    let mut definition_lines = HashMap::new();
+
+    let emit_def = |loc: Location, defs: &mut Vec<Location>, lines: &mut HashMap<Location, String>| {
+        record_definition_line(&loc, source, lines);
+        defs.push(loc);
+    };
+
+    match language {
+        crate::languages::Language::Java => {
+            crate::languages::java::emit_definitions(path, source, tree, |loc| {
+                emit_def(loc, &mut definitions, &mut definition_lines);
+            });
+        }
+        crate::languages::Language::Kotlin => {
+            crate::languages::kotlin::emit_definitions(path, source, tree, |loc| {
+                emit_def(loc, &mut definitions, &mut definition_lines);
+            });
+        }
+        crate::languages::Language::Python => {
+            crate::languages::python::emit_definitions(path, source, tree, |loc| {
+                emit_def(loc, &mut definitions, &mut definition_lines);
+            });
+        }
+        crate::languages::Language::JavaScript
+        | crate::languages::Language::TypeScript
+        | crate::languages::Language::TypeScriptReact => {
+            crate::languages::javascript::emit_definitions(path, source, tree, |loc| {
+                emit_def(loc, &mut definitions, &mut definition_lines);
+            });
+        }
+        crate::languages::Language::Rust => {
+            crate::languages::rust::emit_definitions(path, source, tree, |loc| {
+                emit_def(loc, &mut definitions, &mut definition_lines);
+            });
+        }
+    }
+
+    (definitions, definition_lines)
+}
+
 /// Process a single file: parse and extract definitions/references
 fn process_file(path: &PathBuf, source: &str) -> Option<FileResult> {
     let language = crate::languages::language_for_path(path)?;
     let tree = parse_tree(&language, source)?;
     let ecosystem = crate::languages::ecosystem_for_language(language);
 
-    let mut definitions = Vec::new();
-    let mut definition_lines = HashMap::new();
-
-    match language {
-        crate::languages::Language::Java => {
-            let mut defs = Vec::new();
-            let mut lines = HashMap::new();
-            crate::languages::java::emit_definitions(path, source, &tree, |loc| {
-                record_definition_line(&loc, source, &mut lines);
-                defs.push(loc);
-            });
-            definitions = defs;
-            definition_lines = lines;
-        }
-        crate::languages::Language::Kotlin => {
-            let mut defs = Vec::new();
-            let mut lines = HashMap::new();
-            crate::languages::kotlin::emit_definitions(path, source, &tree, |loc| {
-                record_definition_line(&loc, source, &mut lines);
-                defs.push(loc);
-            });
-            definitions = defs;
-            definition_lines = lines;
-        }
-        crate::languages::Language::Python => {
-            let mut defs = Vec::new();
-            let mut lines = HashMap::new();
-            crate::languages::python::emit_definitions(path, source, &tree, |loc| {
-                record_definition_line(&loc, source, &mut lines);
-                defs.push(loc);
-            });
-            definitions = defs;
-            definition_lines = lines;
-        }
-        crate::languages::Language::JavaScript
-        | crate::languages::Language::TypeScript
-        | crate::languages::Language::TypeScriptReact => {
-            let mut defs = Vec::new();
-            let mut lines = HashMap::new();
-            crate::languages::javascript::emit_definitions(path, source, &tree, |loc| {
-                record_definition_line(&loc, source, &mut lines);
-                defs.push(loc);
-            });
-            definitions = defs;
-            definition_lines = lines;
-        }
-        crate::languages::Language::Rust => {
-            let mut defs = Vec::new();
-            let mut lines = HashMap::new();
-            crate::languages::rust::emit_definitions(path, source, &tree, |loc| {
-                record_definition_line(&loc, source, &mut lines);
-                defs.push(loc);
-            });
-            definitions = defs;
-            definition_lines = lines;
-        }
-    }
+    let (definitions, definition_lines) = collect_definitions(path, source, &tree, language);
 
     let mut references = Vec::new();
     match language {
