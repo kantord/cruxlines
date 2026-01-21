@@ -2,14 +2,18 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use petgraph::graph::{Graph, NodeIndex};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::find_references::Location;
 
 pub fn build_file_graph(
     grouped: &HashMap<Location, Vec<Location>>,
-) -> (Graph<PathBuf, ()>, HashMap<PathBuf, NodeIndex>) {
+) -> (Graph<PathBuf, ()>, FxHashMap<PathBuf, NodeIndex>) {
     let mut graph: Graph<PathBuf, ()> = Graph::new();
-    let mut indices: HashMap<PathBuf, NodeIndex> = HashMap::new();
+    let mut indices: FxHashMap<PathBuf, NodeIndex> = FxHashMap::default();
+    // Track existing edges to avoid duplicates
+    let mut existing_edges: FxHashSet<(NodeIndex, NodeIndex)> = FxHashSet::default();
+
     for (definition, usages) in grouped {
         let def_idx = node_index(&mut graph, &mut indices, &definition.path);
         for usage in usages {
@@ -17,7 +21,10 @@ pub fn build_file_graph(
                 continue;
             }
             let use_idx = node_index(&mut graph, &mut indices, &usage.path);
-            graph.add_edge(use_idx, def_idx, ());
+            // Only add edge if it doesn't already exist
+            if existing_edges.insert((use_idx, def_idx)) {
+                graph.add_edge(use_idx, def_idx, ());
+            }
         }
     }
     (graph, indices)
@@ -25,7 +32,7 @@ pub fn build_file_graph(
 
 fn node_index(
     graph: &mut Graph<PathBuf, ()>,
-    indices: &mut HashMap<PathBuf, NodeIndex>,
+    indices: &mut FxHashMap<PathBuf, NodeIndex>,
     path: &PathBuf,
 ) -> NodeIndex {
     if let Some(index) = indices.get(path) {

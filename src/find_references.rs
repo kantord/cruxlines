@@ -1,9 +1,16 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
+use rayon::prelude::*;
+use rustc_hash::{FxHashMap, FxHashSet};
+use serde::{Deserialize, Serialize};
 use tree_sitter::{Node, Parser, Tree};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+use crate::cache::FileCache;
+use crate::timing;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Location {
     pub path: PathBuf,
     pub line: usize,
@@ -24,10 +31,18 @@ pub struct ReferenceScan {
 }
 
 struct EcosystemSymbols {
-    definitions: HashMap<String, Vec<Location>>,
-    definition_positions: HashSet<(PathBuf, usize, usize)>,
+    definitions: FxHashMap<String, Vec<Location>>,
+    definition_positions: FxHashSet<(PathBuf, usize, usize)>,
     references: Vec<Location>,
-    definition_lines: HashMap<Location, String>,
+    definition_lines: FxHashMap<Location, String>,
+}
+
+/// Results from processing a single file
+struct FileResult {
+    ecosystem: crate::languages::Ecosystem,
+    definitions: Vec<Location>,
+    references: Vec<Location>,
+    definition_lines: FxHashMap<Location, String>,
 }
 
 pub fn find_references<I, P>(files: I) -> Result<ReferenceScan, crate::io::CruxlinesError>
@@ -35,154 +50,277 @@ where
     I: IntoIterator<Item = Result<(P, String), crate::io::CruxlinesError>>,
     P: Into<PathBuf>,
 {
+    // Collect files first (need Vec for parallel iteration)
+    let start = Instant::now();
+    let files: Vec<(PathBuf, String)> = files
+        .into_iter()
+        .filter_map(|item| item.ok())
+        .map(|(p, s)| (p.into(), s))
+        .collect();
+    timing::log_with_count("  collect files", start.elapsed(), files.len());
+
+    // Process files in parallel
+    let start = Instant::now();
+    let file_results: Vec<FileResult> = files
+        .par_iter()
+        .filter_map(|(path, source)| process_file(path, source))
+        .collect();
+    timing::log_with_count("  process files (parallel)", start.elapsed(), file_results.len());
+
+    // Merge results by ecosystem
+    let start = Instant::now();
     let mut symbols_by_ecosystem: HashMap<crate::languages::Ecosystem, EcosystemSymbols> =
         HashMap::new();
-    for item in files {
-        let (path, source) = item?;
-        let path = path.into();
-        let Some(language) = crate::languages::language_for_path(&path) else {
-            continue;
-        };
-        let Some(tree) = parse_tree(&language, &source) else {
-            continue;
-        };
-        let ecosystem = crate::languages::ecosystem_for_language(language);
-        let entry = symbols_by_ecosystem.entry(ecosystem).or_insert_with(|| EcosystemSymbols {
-            definitions: HashMap::new(),
-            definition_positions: HashSet::new(),
-            references: Vec::new(),
-            definition_lines: HashMap::new(),
-        });
-        match language {
-            crate::languages::Language::Java => crate::languages::java::emit_definitions(
-                &path,
-                &source,
-                &tree,
-                |location| {
-                    record_definition(
-                        location.clone(),
-                        &mut entry.definitions,
-                        &mut entry.definition_positions,
-                    );
-                    record_definition_line(&location, &source, &mut entry.definition_lines);
-                },
-            ),
-            crate::languages::Language::Kotlin => crate::languages::kotlin::emit_definitions(
-                &path,
-                &source,
-                &tree,
-                |location| {
-                    record_definition(
-                        location.clone(),
-                        &mut entry.definitions,
-                        &mut entry.definition_positions,
-                    );
-                    record_definition_line(&location, &source, &mut entry.definition_lines);
-                },
-            ),
-            crate::languages::Language::Python => crate::languages::python::emit_definitions(
-                &path,
-                &source,
-                &tree,
-                |location| {
-                    record_definition(
-                        location.clone(),
-                        &mut entry.definitions,
-                        &mut entry.definition_positions,
-                    );
-                    record_definition_line(&location, &source, &mut entry.definition_lines);
-                },
-            ),
-            crate::languages::Language::JavaScript
-            | crate::languages::Language::TypeScript
-            | crate::languages::Language::TypeScriptReact => {
-                crate::languages::javascript::emit_definitions(
-                    &path,
-                    &source,
-                    &tree,
-                    |location| {
-                        record_definition(
-                            location.clone(),
-                            &mut entry.definitions,
-                            &mut entry.definition_positions,
-                        );
-                        record_definition_line(&location, &source, &mut entry.definition_lines);
-                    },
-                )
-            }
-            crate::languages::Language::Rust => crate::languages::rust::emit_definitions(
-                &path,
-                &source,
-                &tree,
-                |location| {
-                    record_definition(
-                        location.clone(),
-                        &mut entry.definitions,
-                        &mut entry.definition_positions,
-                    );
-                    record_definition_line(&location, &source, &mut entry.definition_lines);
-                },
-            ),
-        }
-        match language {
-            crate::languages::Language::Java => crate::languages::java::emit_references(
-                &path,
-                &source,
-                &tree,
-                |location| entry.references.push(location),
-            ),
-            crate::languages::Language::Kotlin => crate::languages::kotlin::emit_references(
-                &path,
-                &source,
-                &tree,
-                |location| entry.references.push(location),
-            ),
-            crate::languages::Language::Python => crate::languages::python::emit_references(
-                &path,
-                &source,
-                &tree,
-                |location| entry.references.push(location),
-            ),
-            crate::languages::Language::JavaScript
-            | crate::languages::Language::TypeScript
-            | crate::languages::Language::TypeScriptReact => {
-                crate::languages::javascript::emit_references(
-                    &path,
-                    &source,
-                    &tree,
-                    |location| entry.references.push(location),
-                )
-            }
-            crate::languages::Language::Rust => crate::languages::rust::emit_references(
-                &path,
-                &source,
-                &tree,
-                |location| entry.references.push(location),
-            ),
-        }
-    }
 
+    for result in file_results {
+        let entry = symbols_by_ecosystem
+            .entry(result.ecosystem)
+            .or_insert_with(|| EcosystemSymbols {
+                definitions: FxHashMap::default(),
+                definition_positions: FxHashSet::default(),
+                references: Vec::new(),
+                definition_lines: FxHashMap::default(),
+            });
+
+        for location in result.definitions {
+            record_definition(
+                location,
+                &mut entry.definitions,
+                &mut entry.definition_positions,
+            );
+        }
+        entry.references.extend(result.references);
+        entry.definition_lines.extend(result.definition_lines);
+    }
+    timing::log_with_count("  merge results", start.elapsed(), symbols_by_ecosystem.len());
+
+    let start = Instant::now();
     let mut edges = Vec::new();
     let mut definition_lines = HashMap::new();
     for (ecosystem, symbols) in &symbols_by_ecosystem {
-        for reference in &symbols.references {
-            record_reference(
-                reference.clone(),
-                *ecosystem,
-                &symbols.definitions,
-                &symbols.definition_positions,
-                &mut edges,
-            );
-        }
+        let ecosystem_edges: Vec<ReferenceEdge> = symbols
+            .references
+            .par_iter()
+            .flat_map(|reference| {
+                make_edges(
+                    reference,
+                    *ecosystem,
+                    &symbols.definitions,
+                    &symbols.definition_positions,
+                )
+            })
+            .collect();
+        edges.extend(ecosystem_edges);
+
         for (location, line) in &symbols.definition_lines {
             definition_lines
                 .entry(location.clone())
                 .or_insert_with(|| line.clone());
         }
     }
+    timing::log_with_count("  build_edges (parallel)", start.elapsed(), edges.len());
 
     Ok(ReferenceScan {
         edges,
+        definition_lines,
+    })
+}
+
+/// Find references with caching support. Only reads and parses files that aren't cached.
+pub fn find_references_cached(
+    paths: Vec<PathBuf>,
+    cache: &FileCache,
+) -> Result<ReferenceScan, crate::io::CruxlinesError> {
+    let start = Instant::now();
+
+    // Process files in parallel - check cache first, parse on miss
+    let file_results: Vec<FileResult> = paths
+        .par_iter()
+        .filter_map(|path| process_file_cached(path, cache))
+        .collect();
+    timing::log_with_count(
+        "  process files (cached)",
+        start.elapsed(),
+        file_results.len(),
+    );
+
+    // Rest is same as find_references
+    let start = Instant::now();
+    let mut symbols_by_ecosystem: HashMap<crate::languages::Ecosystem, EcosystemSymbols> =
+        HashMap::new();
+
+    for result in file_results {
+        let entry = symbols_by_ecosystem
+            .entry(result.ecosystem)
+            .or_insert_with(|| EcosystemSymbols {
+                definitions: FxHashMap::default(),
+                definition_positions: FxHashSet::default(),
+                references: Vec::new(),
+                definition_lines: FxHashMap::default(),
+            });
+
+        for location in result.definitions {
+            record_definition(
+                location,
+                &mut entry.definitions,
+                &mut entry.definition_positions,
+            );
+        }
+        entry.references.extend(result.references);
+        entry.definition_lines.extend(result.definition_lines);
+    }
+    timing::log_with_count("  merge results", start.elapsed(), symbols_by_ecosystem.len());
+
+    let start = Instant::now();
+    let mut edges = Vec::new();
+    let mut definition_lines = HashMap::new();
+    for (ecosystem, symbols) in &symbols_by_ecosystem {
+        let ecosystem_edges: Vec<ReferenceEdge> = symbols
+            .references
+            .par_iter()
+            .flat_map(|reference| {
+                make_edges(
+                    reference,
+                    *ecosystem,
+                    &symbols.definitions,
+                    &symbols.definition_positions,
+                )
+            })
+            .collect();
+        edges.extend(ecosystem_edges);
+
+        for (location, line) in &symbols.definition_lines {
+            definition_lines
+                .entry(location.clone())
+                .or_insert_with(|| line.clone());
+        }
+    }
+    timing::log_with_count("  build_edges (parallel)", start.elapsed(), edges.len());
+
+    Ok(ReferenceScan {
+        edges,
+        definition_lines,
+    })
+}
+
+/// Process a file with cache support - returns cached result or parses fresh
+fn process_file_cached(path: &PathBuf, cache: &FileCache) -> Option<FileResult> {
+    // Try cache first
+    if let Some(cached) = cache.get(path) {
+        return Some(FileResult {
+            ecosystem: cached.ecosystem,
+            definitions: cached.definitions,
+            references: cached.references,
+            definition_lines: cached.definition_lines,
+        });
+    }
+
+    // Cache miss - read and parse file
+    let source = std::fs::read_to_string(path).ok()?;
+    let result = process_file(path, &source)?;
+
+    // Save to cache (ignore errors)
+    let _ = cache.set(
+        path,
+        result.ecosystem,
+        &result.definitions,
+        &result.references,
+        &result.definition_lines,
+    );
+
+    Some(result)
+}
+
+fn collect_definitions(
+    path: &PathBuf,
+    source: &str,
+    tree: &Tree,
+    language: crate::languages::Language,
+) -> (Vec<Location>, FxHashMap<Location, String>) {
+    let mut definitions = Vec::new();
+    let mut definition_lines = FxHashMap::default();
+
+    let emit_def = |loc: Location, defs: &mut Vec<Location>, lines: &mut FxHashMap<Location, String>| {
+        record_definition_line(&loc, source, lines);
+        defs.push(loc);
+    };
+
+    match language {
+        crate::languages::Language::Java => {
+            crate::languages::java::emit_definitions(path, source, tree, |loc| {
+                emit_def(loc, &mut definitions, &mut definition_lines);
+            });
+        }
+        crate::languages::Language::Kotlin => {
+            crate::languages::kotlin::emit_definitions(path, source, tree, |loc| {
+                emit_def(loc, &mut definitions, &mut definition_lines);
+            });
+        }
+        crate::languages::Language::Python => {
+            crate::languages::python::emit_definitions(path, source, tree, |loc| {
+                emit_def(loc, &mut definitions, &mut definition_lines);
+            });
+        }
+        crate::languages::Language::JavaScript
+        | crate::languages::Language::TypeScript
+        | crate::languages::Language::TypeScriptReact => {
+            crate::languages::javascript::emit_definitions(path, source, tree, |loc| {
+                emit_def(loc, &mut definitions, &mut definition_lines);
+            });
+        }
+        crate::languages::Language::Rust => {
+            crate::languages::rust::emit_definitions(path, source, tree, |loc| {
+                emit_def(loc, &mut definitions, &mut definition_lines);
+            });
+        }
+    }
+
+    (definitions, definition_lines)
+}
+
+/// Process a single file: parse and extract definitions/references
+fn process_file(path: &PathBuf, source: &str) -> Option<FileResult> {
+    let language = crate::languages::language_for_path(path)?;
+    let tree = parse_tree(&language, source)?;
+    let ecosystem = crate::languages::ecosystem_for_language(language);
+
+    let (definitions, definition_lines) = collect_definitions(path, source, &tree, language);
+
+    let mut references = Vec::new();
+    match language {
+        crate::languages::Language::Java => {
+            crate::languages::java::emit_references(path, source, &tree, |loc| {
+                references.push(loc);
+            });
+        }
+        crate::languages::Language::Kotlin => {
+            crate::languages::kotlin::emit_references(path, source, &tree, |loc| {
+                references.push(loc);
+            });
+        }
+        crate::languages::Language::Python => {
+            crate::languages::python::emit_references(path, source, &tree, |loc| {
+                references.push(loc);
+            });
+        }
+        crate::languages::Language::JavaScript
+        | crate::languages::Language::TypeScript
+        | crate::languages::Language::TypeScriptReact => {
+            crate::languages::javascript::emit_references(path, source, &tree, |loc| {
+                references.push(loc);
+            });
+        }
+        crate::languages::Language::Rust => {
+            crate::languages::rust::emit_references(path, source, &tree, |loc| {
+                references.push(loc);
+            });
+        }
+    }
+
+    Some(FileResult {
+        ecosystem,
+        definitions,
+        references,
         definition_lines,
     })
 }
@@ -244,8 +382,8 @@ pub(crate) fn location_from_node(path: &Path, source: &str, node: Node) -> Optio
 
 fn record_definition(
     location: Location,
-    definitions: &mut HashMap<String, Vec<Location>>,
-    definition_positions: &mut HashSet<(PathBuf, usize, usize)>,
+    definitions: &mut FxHashMap<String, Vec<Location>>,
+    definition_positions: &mut FxHashSet<(PathBuf, usize, usize)>,
 ) {
     let key = location.name.clone();
     let entry = definitions.entry(key).or_default();
@@ -257,24 +395,26 @@ fn record_definition(
     definition_positions.insert((location.path, location.line, location.column));
 }
 
-fn record_reference(
-    location: Location,
+/// Returns edges for a reference (used in parallel processing)
+fn make_edges(
+    location: &Location,
     ecosystem: crate::languages::Ecosystem,
-    definitions: &HashMap<String, Vec<Location>>,
-    definition_positions: &HashSet<(PathBuf, usize, usize)>,
-    edges: &mut Vec<ReferenceEdge>,
-) {
+    definitions: &FxHashMap<String, Vec<Location>>,
+    definition_positions: &FxHashSet<(PathBuf, usize, usize)>,
+) -> Vec<ReferenceEdge> {
     if definition_positions.contains(&(location.path.clone(), location.line, location.column)) {
-        return;
+        return Vec::new();
     }
     if let Some(defs) = definitions.get(&location.name) {
-        for def in defs {
-            edges.push(ReferenceEdge {
+        defs.iter()
+            .map(|def| ReferenceEdge {
                 definition: def.clone(),
                 usage: location.clone(),
                 ecosystem,
-            });
-        }
+            })
+            .collect()
+    } else {
+        Vec::new()
     }
 }
 
@@ -286,7 +426,7 @@ fn position(node: Node) -> (usize, usize) {
 fn record_definition_line(
     location: &Location,
     source: &str,
-    lines: &mut HashMap<Location, String>,
+    lines: &mut FxHashMap<Location, String>,
 ) {
     if lines.contains_key(location) {
         return;

@@ -1,8 +1,10 @@
 mod analysis;
+mod cache;
 mod find_references;
 mod graph;
 mod io;
 mod languages;
+pub mod timing;
 
 pub use analysis::{cruxlines, cruxlines_from_inputs, OutputRow};
 pub use io::CruxlinesError;
