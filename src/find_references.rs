@@ -95,22 +95,27 @@ where
     let mut edges = Vec::new();
     let mut definition_lines = HashMap::new();
     for (ecosystem, symbols) in &symbols_by_ecosystem {
-        for reference in &symbols.references {
-            record_reference(
-                reference.clone(),
-                *ecosystem,
-                &symbols.definitions,
-                &symbols.definition_positions,
-                &mut edges,
-            );
-        }
+        let ecosystem_edges: Vec<ReferenceEdge> = symbols
+            .references
+            .par_iter()
+            .flat_map(|reference| {
+                make_edges(
+                    reference,
+                    *ecosystem,
+                    &symbols.definitions,
+                    &symbols.definition_positions,
+                )
+            })
+            .collect();
+        edges.extend(ecosystem_edges);
+
         for (location, line) in &symbols.definition_lines {
             definition_lines
                 .entry(location.clone())
                 .or_insert_with(|| line.clone());
         }
     }
-    timing::log_with_count("  build_edges", start.elapsed(), edges.len());
+    timing::log_with_count("  build_edges (parallel)", start.elapsed(), edges.len());
 
     Ok(ReferenceScan {
         edges,
@@ -291,24 +296,26 @@ fn record_definition(
     definition_positions.insert((location.path, location.line, location.column));
 }
 
-fn record_reference(
-    location: Location,
+/// Returns edges for a reference (used in parallel processing)
+fn make_edges(
+    location: &Location,
     ecosystem: crate::languages::Ecosystem,
     definitions: &HashMap<String, Vec<Location>>,
     definition_positions: &HashSet<(PathBuf, usize, usize)>,
-    edges: &mut Vec<ReferenceEdge>,
-) {
+) -> Vec<ReferenceEdge> {
     if definition_positions.contains(&(location.path.clone(), location.line, location.column)) {
-        return;
+        return Vec::new();
     }
     if let Some(defs) = definitions.get(&location.name) {
-        for def in defs {
-            edges.push(ReferenceEdge {
+        defs.iter()
+            .map(|def| ReferenceEdge {
                 definition: def.clone(),
                 usage: location.clone(),
                 ecosystem,
-            });
-        }
+            })
+            .collect()
+    } else {
+        Vec::new()
     }
 }
 
