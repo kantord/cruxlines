@@ -7,13 +7,13 @@ use crate::Ecosystem;
 
 #[derive(Debug)]
 pub enum CruxlinesError {
-    ReadFile { path: PathBuf, source: std::io::Error },
+    ReadFile {
+        path: PathBuf,
+        source: std::io::Error,
+    },
 }
 
-pub fn gather_paths(
-    repo_root: &PathBuf,
-    ecosystems: &HashSet<Ecosystem>,
-) -> Vec<PathBuf> {
+pub fn gather_paths(repo_root: &PathBuf, ecosystems: &HashSet<Ecosystem>) -> Vec<PathBuf> {
     let builder = WalkBuilder::new(repo_root);
 
     let mut paths = Vec::new();

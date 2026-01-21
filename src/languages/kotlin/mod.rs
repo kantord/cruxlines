@@ -2,7 +2,7 @@ use std::path::Path;
 
 use tree_sitter::Node;
 
-use crate::find_references::{location_from_node, walk_tree, Location};
+use crate::find_references::{Location, location_from_node, walk_tree};
 
 pub(crate) const EXTENSIONS: &[&str] = &["kt", "kts"];
 pub(crate) const REFERENCE_KINDS: &[&str] = &["simple_identifier", "identifier", "type_identifier"];
@@ -25,9 +25,10 @@ pub(crate) fn emit_definitions(
         | "type_alias" => {
             if is_top_level(node)
                 && let Some(name) = node.child_by_field_name("name")
-                    && let Some(location) = location_from_node(path, source, name) {
-                        emit(location);
-                    }
+                && let Some(location) = location_from_node(path, source, name)
+            {
+                emit(location);
+            }
         }
         _ => {}
     });
@@ -41,9 +42,10 @@ pub(crate) fn emit_references(
 ) {
     walk_tree(tree, |node| {
         if REFERENCE_KINDS.contains(&node.kind())
-            && let Some(location) = location_from_node(path, source, node) {
-                emit(location);
-            }
+            && let Some(location) = location_from_node(path, source, node)
+        {
+            emit(location);
+        }
     });
 }
 

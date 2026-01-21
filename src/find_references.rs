@@ -120,7 +120,11 @@ where
         .par_iter()
         .filter_map(|(path, source)| process_file(path, source))
         .collect();
-    timing::log_with_count("  process files (parallel)", start.elapsed(), file_results.len());
+    timing::log_with_count(
+        "  process files (parallel)",
+        start.elapsed(),
+        file_results.len(),
+    );
 
     // Merge results by ecosystem
     let start = Instant::now();
@@ -147,7 +151,11 @@ where
         entry.references.extend(result.references);
         entry.definition_lines.extend(result.definition_lines);
     }
-    timing::log_with_count("  merge results", start.elapsed(), symbols_by_ecosystem.len());
+    timing::log_with_count(
+        "  merge results",
+        start.elapsed(),
+        symbols_by_ecosystem.len(),
+    );
 
     let start = Instant::now();
     let mut edges = Vec::new();
@@ -169,7 +177,7 @@ where
 
         for (location, line) in &symbols.definition_lines {
             definition_lines
-                .entry(location.clone())
+                .entry(*location)
                 .or_insert_with(|| line.clone());
         }
     }
@@ -224,7 +232,11 @@ pub fn find_references_cached(
         entry.references.extend(result.references);
         entry.definition_lines.extend(result.definition_lines);
     }
-    timing::log_with_count("  merge results", start.elapsed(), symbols_by_ecosystem.len());
+    timing::log_with_count(
+        "  merge results",
+        start.elapsed(),
+        symbols_by_ecosystem.len(),
+    );
 
     let start = Instant::now();
     let mut edges = Vec::new();
@@ -246,7 +258,7 @@ pub fn find_references_cached(
 
         for (location, line) in &symbols.definition_lines {
             definition_lines
-                .entry(location.clone())
+                .entry(*location)
                 .or_insert_with(|| line.clone());
         }
     }
@@ -287,7 +299,7 @@ fn process_file_cached(path: &PathBuf, cache: &FileCache) -> Option<FileResult> 
 }
 
 fn collect_definitions(
-    path: &PathBuf,
+    path: &Path,
     source: &str,
     tree: &Tree,
     language: crate::languages::Language,
@@ -295,10 +307,11 @@ fn collect_definitions(
     let mut definitions = Vec::new();
     let mut definition_lines = FxHashMap::default();
 
-    let emit_def = |loc: Location, defs: &mut Vec<Location>, lines: &mut FxHashMap<Location, String>| {
-        record_definition_line(&loc, source, lines);
-        defs.push(loc);
-    };
+    let emit_def =
+        |loc: Location, defs: &mut Vec<Location>, lines: &mut FxHashMap<Location, String>| {
+            record_definition_line(&loc, source, lines);
+            defs.push(loc);
+        };
 
     match language {
         crate::languages::Language::Java => {
@@ -334,7 +347,7 @@ fn collect_definitions(
 }
 
 /// Process a single file: parse and extract definitions/references
-fn process_file(path: &PathBuf, source: &str) -> Option<FileResult> {
+fn process_file(path: &Path, source: &str) -> Option<FileResult> {
     let language = crate::languages::language_for_path(path)?;
     let tree = parse_tree(&language, source)?;
     let ecosystem = crate::languages::ecosystem_for_language(language);
@@ -404,10 +417,9 @@ pub(crate) fn collect_identifier_nodes<F>(node: Node, source: &str, mut on_ident
 where
     F: FnMut(Node),
 {
-    if node.kind() == "identifier"
-        && node.utf8_text(source.as_bytes()).is_ok() {
-            on_ident(node);
-        }
+    if node.kind() == "identifier" && node.utf8_text(source.as_bytes()).is_ok() {
+        on_ident(node);
+    }
     let mut stack = vec![node];
     while let Some(current) = stack.pop() {
         for i in 0..current.child_count() {
@@ -492,7 +504,7 @@ fn record_definition_line(
         .unwrap_or("")
         .trim_end()
         .to_string();
-    lines.insert(location.clone(), text);
+    lines.insert(*location, text);
 }
 
 #[cfg(test)]

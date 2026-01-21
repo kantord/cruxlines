@@ -2,9 +2,7 @@ use std::path::Path;
 
 use tree_sitter::Node;
 
-use crate::find_references::{
-    collect_identifier_nodes, location_from_node, walk_tree, Location,
-};
+use crate::find_references::{Location, collect_identifier_nodes, location_from_node, walk_tree};
 
 pub(crate) const EXTENSIONS: &[&str] = &["js", "jsx"];
 pub(crate) const TYPESCRIPT_EXTENSIONS: &[&str] = &["ts"];
@@ -37,19 +35,21 @@ pub(crate) fn emit_definitions(
         | "enum_declaration" => {
             if is_exported(node)
                 && let Some(name) = node.child_by_field_name("name")
-                    && let Some(location) = location_from_node(path, source, name) {
-                        emit(location);
-                    }
+                && let Some(location) = location_from_node(path, source, name)
+            {
+                emit(location);
+            }
         }
         "variable_declarator" => {
             if is_exported(node)
-                && let Some(name) = node.child_by_field_name("name") {
-                    collect_identifier_nodes(name, source, |ident| {
-                        if let Some(location) = location_from_node(path, source, ident) {
-                            emit(location);
-                        }
-                    });
-                }
+                && let Some(name) = node.child_by_field_name("name")
+            {
+                collect_identifier_nodes(name, source, |ident| {
+                    if let Some(location) = location_from_node(path, source, ident) {
+                        emit(location);
+                    }
+                });
+            }
         }
         _ => {}
     });
@@ -63,9 +63,10 @@ pub(crate) fn emit_references(
 ) {
     walk_tree(tree, |node| {
         if REFERENCE_KINDS.contains(&node.kind())
-            && let Some(location) = location_from_node(path, source, node) {
-                emit(location);
-            }
+            && let Some(location) = location_from_node(path, source, node)
+        {
+            emit(location);
+        }
     });
 }
 

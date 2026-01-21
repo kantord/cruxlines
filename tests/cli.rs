@@ -1,13 +1,12 @@
 use assert_cmd::cargo::cargo_bin_cmd;
-use predicates::prelude::PredicateBooleanExt;
 use predicates::Predicate;
+use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
 use std::process::Stdio;
 
 fn run_cli_output() -> String {
     let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args(["--ecosystem", "python"])
-        .current_dir(repo_root());
+    cmd.args(["--ecosystem", "python"]).current_dir(repo_root());
     let output = cmd.assert().success().get_output().stdout.clone();
     String::from_utf8(output).expect("utf8 output")
 }
@@ -86,10 +85,8 @@ fn cli_uses_definition_snapshot_for_line_text() {
     git_init(&dir);
     let defs_path = dir.join("defs.py");
     let main_path = dir.join("main.py");
-    std::fs::write(&defs_path, "def add():\n    return 1\n")
-        .expect("write defs");
-    std::fs::write(&main_path, "from defs import add\n\nadd()\n")
-        .expect("write main");
+    std::fs::write(&defs_path, "def add():\n    return 1\n").expect("write defs");
+    std::fs::write(&main_path, "from defs import add\n\nadd()\n").expect("write main");
     git_commit(&dir, "init", "2001-01-01T00:00:00Z");
 
     let exe = assert_cmd::cargo::cargo_bin!("cruxlines");
@@ -110,8 +107,7 @@ fn cli_uses_definition_snapshot_for_line_text() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 
-    std::fs::write(&defs_path, "def add_changed():\n    return 2\n")
-        .expect("modify defs");
+    std::fs::write(&defs_path, "def add_changed():\n    return 2\n").expect("modify defs");
     std::thread::sleep(std::time::Duration::from_millis(50));
 
     let output = child.wait_with_output().expect("wait output");
@@ -145,8 +141,7 @@ fn library_cruxlines_scans_repo_root() {
     let dir = temp_dir_path("cruxlines-lib-root");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     git_init(&dir);
-    std::fs::write(dir.join("main.py"), "def add():\n    return 1\n\nadd()\n")
-        .expect("write main");
+    std::fs::write(dir.join("main.py"), "def add():\n    return 1\n\nadd()\n").expect("write main");
     git_commit(&dir, "init", "2001-01-01T00:00:00Z");
 
     let ecosystems = std::collections::HashSet::from([cruxlines::Ecosystem::Python]);
@@ -216,8 +211,7 @@ fn cli_hides_references_without_flag() {
 #[test]
 fn cli_filters_by_ecosystem() {
     let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args(["--ecosystem", "python"])
-        .current_dir(repo_root());
+    cmd.args(["--ecosystem", "python"]).current_dir(repo_root());
     let output = cmd.assert().success().get_output().stdout.clone();
     let output = String::from_utf8(output).expect("utf8 output");
     assert!(
@@ -233,8 +227,7 @@ fn cli_filters_by_ecosystem() {
 #[test]
 fn cli_supports_ecosystem_short_flag() {
     let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args(["-e", "python"])
-        .current_dir(repo_root());
+    cmd.args(["-e", "python"]).current_dir(repo_root());
     let output = cmd.assert().success().get_output().stdout.clone();
     let output = String::from_utf8(output).expect("utf8 output");
     assert!(
@@ -250,8 +243,7 @@ fn cli_supports_ecosystem_short_flag() {
 #[test]
 fn cli_accepts_ecosystem_aliases() {
     let mut cmd = cargo_bin_cmd!("cruxlines");
-    cmd.args(["--ecosystem", "py"])
-        .current_dir(repo_root());
+    cmd.args(["--ecosystem", "py"]).current_dir(repo_root());
     let output = cmd.assert().success().get_output().stdout.clone();
     let output = String::from_utf8(output).expect("utf8 output");
     assert!(
@@ -269,8 +261,7 @@ fn cli_outputs_paths_relative_to_repo_root() {
     let dir = temp_dir_path("cruxlines-relpath");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     git_init(&dir);
-    std::fs::write(dir.join("main.py"), "def add():\n    return 1\n\nadd()\n")
-        .expect("write main");
+    std::fs::write(dir.join("main.py"), "def add():\n    return 1\n\nadd()\n").expect("write main");
     git_commit(&dir, "init", "2001-01-01T00:00:00Z");
 
     let subdir = dir.join("sub");
@@ -301,7 +292,7 @@ fn cli_skips_unknown_extension_inputs() {
         dir.join("main.py"),
         "def add(a, b):\n    return a + b\n\nadd(1, 2)\n",
     )
-        .expect("write main");
+    .expect("write main");
     std::fs::write(dir.join("ignore.txt"), "not source").expect("write temp file");
 
     let mut cmd = cargo_bin_cmd!("cruxlines");
@@ -332,7 +323,7 @@ fn cli_skips_non_utf8_inputs() {
         dir.join("main.py"),
         "def add(a, b):\n    return a + b\n\nadd(1, 2)\n",
     )
-        .expect("write main");
+    .expect("write main");
     std::fs::write(dir.join("binary.py"), [0xff, 0xfe, 0xfd]).expect("write temp file");
 
     let mut cmd = cargo_bin_cmd!("cruxlines");
@@ -360,21 +351,15 @@ fn cli_skips_gitignored_when_scanning_directory() {
     std::fs::create_dir_all(&dir).expect("create temp dir");
     std::fs::create_dir_all(dir.join(".git")).expect("create git dir");
     std::fs::write(dir.join(".gitignore"), "ignored.py\n").expect("write gitignore");
-    std::fs::write(
-        dir.join("utils.py"),
-        "def add(a, b):\n    return a + b\n",
-    )
-    .expect("write utils");
+    std::fs::write(dir.join("utils.py"), "def add(a, b):\n    return a + b\n")
+        .expect("write utils");
     std::fs::write(
         dir.join("main.py"),
         "from utils import add\nfrom ignored import ignored\n\nprint(add(1, 2))\nprint(ignored())\n",
     )
     .expect("write main");
-    std::fs::write(
-        dir.join("ignored.py"),
-        "def ignored():\n    return 0\n",
-    )
-    .expect("write ignored");
+    std::fs::write(dir.join("ignored.py"), "def ignored():\n    return 0\n")
+        .expect("write ignored");
 
     let mut cmd = cargo_bin_cmd!("cruxlines");
     cmd.current_dir(&dir);
@@ -403,22 +388,24 @@ fn cli_uses_repo_root_for_frecency() {
     std::fs::create_dir_all(&dir).expect("create temp dir");
     git_init(&dir);
 
-    std::fs::write(dir.join("defs_a.py"), "def alpha():\n    return 1\n")
-        .expect("write defs_a");
-    std::fs::write(dir.join("defs_b.py"), "def beta():\n    return 1\n")
-        .expect("write defs_b");
+    std::fs::write(dir.join("defs_a.py"), "def alpha():\n    return 1\n").expect("write defs_a");
+    std::fs::write(dir.join("defs_b.py"), "def beta():\n    return 1\n").expect("write defs_b");
     let alpha_calls = "    alpha()\n".repeat(50);
     let beta_calls = "    beta()\n".repeat(50);
     std::fs::write(
         dir.join("use_alpha.py"),
-        format!("from defs_a import alpha\nfrom main import anchor\n\n\
-def helper_alpha():\n{alpha_calls}    anchor()\n"),
+        format!(
+            "from defs_a import alpha\nfrom main import anchor\n\n\
+def helper_alpha():\n{alpha_calls}    anchor()\n"
+        ),
     )
     .expect("write use_alpha");
     std::fs::write(
         dir.join("use_beta.py"),
-        format!("from defs_b import beta\nfrom main import anchor\n\n\
-def helper_beta():\n{beta_calls}    anchor()\n"),
+        format!(
+            "from defs_b import beta\nfrom main import anchor\n\n\
+def helper_beta():\n{beta_calls}    anchor()\n"
+        ),
     )
     .expect("write use_beta");
     std::fs::write(
@@ -512,10 +499,7 @@ fn name_from_line(line: &str) -> Option<&str> {
 }
 
 fn git_init(dir: &std::path::Path) {
-    let status = git_command(dir)
-        .arg("init")
-        .status()
-        .expect("git init");
+    let status = git_command(dir).arg("init").status().expect("git init");
     assert!(status.success(), "git init failed");
     let status = git_command(dir)
         .args(["config", "user.name", "Test User"])
@@ -530,7 +514,11 @@ fn git_init(dir: &std::path::Path) {
 }
 
 fn git_commit(dir: &std::path::Path, message: &str, date: &str) {
-    let status = git_command(dir).arg("add").arg(".").status().expect("git add");
+    let status = git_command(dir)
+        .arg("add")
+        .arg(".")
+        .status()
+        .expect("git add");
     assert!(status.success(), "git add failed");
     let status = git_command(dir)
         .args(["-c", "commit.gpgsign=false", "commit", "-m", message])

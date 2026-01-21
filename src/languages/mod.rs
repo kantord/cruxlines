@@ -78,7 +78,7 @@ pub(crate) fn tree_sitter_language(language: Language) -> tree_sitter::Language 
 
 #[cfg(test)]
 mod tests {
-    use super::{language_for_path, Language};
+    use super::{Language, language_for_path};
     use std::path::PathBuf;
 
     #[test]
@@ -140,5 +140,4 @@ mod tests {
         let lang = language_for_path(&PathBuf::from("file.txt"));
         assert_eq!(lang, None);
     }
-
 }

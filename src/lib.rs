@@ -7,9 +7,9 @@ mod io;
 mod languages;
 pub mod timing;
 
-pub use analysis::{cruxlines, cruxlines_from_inputs, OutputRow};
-pub use io::CruxlinesError;
+pub use analysis::{OutputRow, cruxlines, cruxlines_from_inputs};
 pub use find_references::Location;
+pub use io::CruxlinesError;
 pub use languages::Ecosystem;
 pub use lasso::Spur;
 

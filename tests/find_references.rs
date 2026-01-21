@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use cruxlines::{cruxlines_from_inputs, OutputRow};
+use cruxlines::{OutputRow, cruxlines_from_inputs};
 
 fn read_fixture(path: impl AsRef<Path>) -> (PathBuf, String) {
     let path = path.as_ref().to_path_buf();
@@ -9,7 +9,12 @@ fn read_fixture(path: impl AsRef<Path>) -> (PathBuf, String) {
     (path, contents)
 }
 
-fn has_reference(rows: &[OutputRow], def_name: &str, def_path_ends: &str, use_path_ends: &str) -> bool {
+fn has_reference(
+    rows: &[OutputRow],
+    def_name: &str,
+    def_path_ends: &str,
+    use_path_ends: &str,
+) -> bool {
     rows.iter().any(|row| {
         row.definition.name_str() == def_name
             && row.definition.path_str().ends_with(def_path_ends)
@@ -21,7 +26,10 @@ fn has_reference(rows: &[OutputRow], def_name: &str, def_path_ends: &str, use_pa
 }
 
 fn extension(path: &str) -> Option<String> {
-    Path::new(path).extension().and_then(|ext| ext.to_str()).map(|ext| ext.to_string())
+    Path::new(path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_string())
 }
 
 #[test]
@@ -35,11 +43,21 @@ fn finds_python_cross_file_references() {
     let rows = cruxlines_from_inputs(files, None);
 
     assert!(
-        has_reference(&rows, "add", "src/languages/python/fixtures/utils.py", "src/languages/python/fixtures/main.py"),
+        has_reference(
+            &rows,
+            "add",
+            "src/languages/python/fixtures/utils.py",
+            "src/languages/python/fixtures/main.py"
+        ),
         "expected reference to utils.add from main.py"
     );
     assert!(
-        has_reference(&rows, "User", "src/languages/python/fixtures/models.py", "src/languages/python/fixtures/main.py"),
+        has_reference(
+            &rows,
+            "User",
+            "src/languages/python/fixtures/models.py",
+            "src/languages/python/fixtures/main.py"
+        ),
         "expected reference to models.User from main.py"
     );
 }
@@ -55,11 +73,21 @@ fn finds_javascript_cross_file_references() {
     let rows = cruxlines_from_inputs(files, None);
 
     assert!(
-        has_reference(&rows, "add", "src/languages/javascript/fixtures/utils.js", "src/languages/javascript/fixtures/index.js"),
+        has_reference(
+            &rows,
+            "add",
+            "src/languages/javascript/fixtures/utils.js",
+            "src/languages/javascript/fixtures/index.js"
+        ),
         "expected reference to utils.add from index.js"
     );
     assert!(
-        has_reference(&rows, "User", "src/languages/javascript/fixtures/models.js", "src/languages/javascript/fixtures/index.js"),
+        has_reference(
+            &rows,
+            "User",
+            "src/languages/javascript/fixtures/models.js",
+            "src/languages/javascript/fixtures/index.js"
+        ),
         "expected reference to models.User from index.js"
     );
 }
@@ -75,11 +103,21 @@ fn finds_rust_cross_file_references() {
     let rows = cruxlines_from_inputs(files, None);
 
     assert!(
-        has_reference(&rows, "add", "src/languages/rust/fixtures/utils.rs", "src/languages/rust/fixtures/main.rs"),
+        has_reference(
+            &rows,
+            "add",
+            "src/languages/rust/fixtures/utils.rs",
+            "src/languages/rust/fixtures/main.rs"
+        ),
         "expected reference to utils::add from main.rs"
     );
     assert!(
-        has_reference(&rows, "User", "src/languages/rust/fixtures/models.rs", "src/languages/rust/fixtures/main.rs"),
+        has_reference(
+            &rows,
+            "User",
+            "src/languages/rust/fixtures/models.rs",
+            "src/languages/rust/fixtures/main.rs"
+        ),
         "expected reference to models::User from main.rs"
     );
 }
@@ -95,7 +133,12 @@ fn finds_java_cross_file_references() {
     let rows = cruxlines_from_inputs(files, None);
 
     assert!(
-        has_reference(&rows, "User", "src/languages/java/fixtures/Models.java", "src/languages/java/fixtures/Main.java"),
+        has_reference(
+            &rows,
+            "User",
+            "src/languages/java/fixtures/Models.java",
+            "src/languages/java/fixtures/Main.java"
+        ),
         "expected reference to Models.User from Main.java"
     );
 }
@@ -111,11 +154,21 @@ fn finds_kotlin_cross_file_references() {
     let rows = cruxlines_from_inputs(files, None);
 
     assert!(
-        has_reference(&rows, "add", "src/languages/kotlin/fixtures/utils.kt", "src/languages/kotlin/fixtures/main.kt"),
+        has_reference(
+            &rows,
+            "add",
+            "src/languages/kotlin/fixtures/utils.kt",
+            "src/languages/kotlin/fixtures/main.kt"
+        ),
         "expected reference to utils.add from main.kt"
     );
     assert!(
-        has_reference(&rows, "User", "src/languages/kotlin/fixtures/models.kt", "src/languages/kotlin/fixtures/main.kt"),
+        has_reference(
+            &rows,
+            "User",
+            "src/languages/kotlin/fixtures/models.kt",
+            "src/languages/kotlin/fixtures/main.kt"
+        ),
         "expected reference to models.User from main.kt"
     );
 }
@@ -131,11 +184,21 @@ fn finds_java_kotlin_cross_language_references() {
     let rows = cruxlines_from_inputs(files, None);
 
     assert!(
-        has_reference(&rows, "kotlinGreet", "src/languages/kotlin/fixtures/interop.kt", "src/languages/java/fixtures/InteropCall.java"),
+        has_reference(
+            &rows,
+            "kotlinGreet",
+            "src/languages/kotlin/fixtures/interop.kt",
+            "src/languages/java/fixtures/InteropCall.java"
+        ),
         "expected reference to kotlinGreet from InteropCall.java"
     );
     assert!(
-        has_reference(&rows, "JavaUser", "src/languages/java/fixtures/JavaUser.java", "src/languages/kotlin/fixtures/interop.kt"),
+        has_reference(
+            &rows,
+            "JavaUser",
+            "src/languages/java/fixtures/JavaUser.java",
+            "src/languages/kotlin/fixtures/interop.kt"
+        ),
         "expected reference to JavaUser from interop.kt"
     );
 }
@@ -173,10 +236,7 @@ fn kotlin_references_are_not_duplicated() {
 #[test]
 fn finds_rust_type_identifier_references() {
     let files = vec![
-        (
-            PathBuf::from("models.rs"),
-            "pub struct User;\n".to_string(),
-        ),
+        (PathBuf::from("models.rs"), "pub struct User;\n".to_string()),
         (
             PathBuf::from("main.rs"),
             "mod models;\n\nfn main() {\n    let _u: models::User;\n}\n".to_string(),
@@ -202,11 +262,21 @@ fn finds_typescript_cross_file_references() {
     let rows = cruxlines_from_inputs(files, None);
 
     assert!(
-        has_reference(&rows, "add", "src/languages/javascript/fixtures/utils.ts", "src/languages/javascript/fixtures/index.ts"),
+        has_reference(
+            &rows,
+            "add",
+            "src/languages/javascript/fixtures/utils.ts",
+            "src/languages/javascript/fixtures/index.ts"
+        ),
         "expected reference to utils.add from index.ts"
     );
     assert!(
-        has_reference(&rows, "User", "src/languages/javascript/fixtures/models.ts", "src/languages/javascript/fixtures/index.ts"),
+        has_reference(
+            &rows,
+            "User",
+            "src/languages/javascript/fixtures/models.ts",
+            "src/languages/javascript/fixtures/index.ts"
+        ),
         "expected reference to models.User from index.ts"
     );
 }
@@ -221,7 +291,12 @@ fn finds_tsx_cross_file_references() {
     let rows = cruxlines_from_inputs(files, None);
 
     assert!(
-        has_reference(&rows, "Button", "src/languages/javascript/fixtures/components.tsx", "src/languages/javascript/fixtures/index.tsx"),
+        has_reference(
+            &rows,
+            "Button",
+            "src/languages/javascript/fixtures/components.tsx",
+            "src/languages/javascript/fixtures/index.tsx"
+        ),
         "expected reference to components.Button from index.tsx"
     );
 }
@@ -267,9 +342,11 @@ fn does_not_cross_language_references() {
         for reference in &row.references {
             let ref_ext = extension(reference.path_str());
             assert_eq!(
-                def_ext, ref_ext,
+                def_ext,
+                ref_ext,
                 "expected references to stay within language, got {:?} -> {:?}",
-                row.definition.path_str(), reference.path_str()
+                row.definition.path_str(),
+                reference.path_str()
             );
         }
     }
@@ -352,8 +429,13 @@ fn ties_are_sorted_by_definition_location() {
     });
 
     assert_eq!(
-        rows.iter().map(|row| &row.definition.path).collect::<Vec<_>>(),
-        expected.iter().map(|row| &row.definition.path).collect::<Vec<_>>(),
+        rows.iter()
+            .map(|row| &row.definition.path)
+            .collect::<Vec<_>>(),
+        expected
+            .iter()
+            .map(|row| &row.definition.path)
+            .collect::<Vec<_>>(),
         "expected tie-breaker ordering by definition location"
     );
 }

@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use clap::{Parser, ValueEnum};
 
-use cruxlines::{cruxlines, timing, CruxlinesError, Ecosystem, OutputRow};
+use cruxlines::{CruxlinesError, Ecosystem, OutputRow, cruxlines, timing};
 
 #[derive(Debug, Parser)]
 struct Cli {
@@ -59,9 +59,10 @@ fn main() {
         let _ = std::fs::write(ready_path, "ready\n");
     }
     if let Ok(pause_ms) = std::env::var("CRUXLINES_TEST_PAUSE_MS")
-        && let Ok(pause_ms) = pause_ms.parse::<u64>() {
-            std::thread::sleep(std::time::Duration::from_millis(pause_ms));
-        }
+        && let Ok(pause_ms) = pause_ms.parse::<u64>()
+    {
+        std::thread::sleep(std::time::Duration::from_millis(pause_ms));
+    }
 
     let start = Instant::now();
     for row in &output_rows {
@@ -72,11 +73,7 @@ fn main() {
     timing::log("TOTAL (including output)", overall_start.elapsed());
 }
 
-fn print_row(
-    row: &OutputRow,
-    repo_root: &std::path::Path,
-    include_metadata: bool,
-) {
+fn print_row(row: &OutputRow, repo_root: &std::path::Path, include_metadata: bool) {
     let line_text = row.definition_line.as_str();
     if include_metadata {
         println!(

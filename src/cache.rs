@@ -76,7 +76,8 @@ impl FileCache {
         }
 
         // Convert SerializedLocation back to Location
-        let definitions: Vec<Location> = cached.definitions.into_iter().map(Location::from).collect();
+        let definitions: Vec<Location> =
+            cached.definitions.into_iter().map(Location::from).collect();
         let references: Vec<Location> = cached.references.into_iter().map(Location::from).collect();
         let definition_lines: FxHashMap<Location, String> = cached
             .definition_lines
@@ -128,8 +129,7 @@ impl FileCache {
             definition_lines: definition_lines_ser,
         };
 
-        let bytes = bincode::serialize(&cached)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let bytes = bincode::serialize(&cached).map_err(io::Error::other)?;
 
         // Ensure cache directory exists
         fs::create_dir_all(&self.cache_dir)?;
