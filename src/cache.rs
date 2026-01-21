@@ -7,10 +7,11 @@ use directories::ProjectDirs;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::find_references::Location;
+use crate::find_references::{Location, SerializedLocation};
 use crate::languages::Ecosystem;
 
-const CACHE_VERSION: u32 = 1;
+// Bump version when cache format changes
+const CACHE_VERSION: u32 = 2;
 
 #[derive(Serialize, Deserialize)]
 struct CachedFile {
@@ -19,9 +20,9 @@ struct CachedFile {
     mtime_nanos: u32,
     size: u64,
     ecosystem: Ecosystem,
-    definitions: Vec<Location>,
-    references: Vec<Location>,
-    definition_lines: Vec<(Location, String)>,
+    definitions: Vec<SerializedLocation>,
+    references: Vec<SerializedLocation>,
+    definition_lines: Vec<(SerializedLocation, String)>,
 }
 
 pub struct FileCache {
@@ -74,14 +75,19 @@ impl FileCache {
             return None;
         }
 
-        // Convert definition_lines back to FxHashMap
-        let definition_lines: FxHashMap<Location, String> =
-            cached.definition_lines.into_iter().collect();
+        // Convert SerializedLocation back to Location
+        let definitions: Vec<Location> = cached.definitions.into_iter().map(Location::from).collect();
+        let references: Vec<Location> = cached.references.into_iter().map(Location::from).collect();
+        let definition_lines: FxHashMap<Location, String> = cached
+            .definition_lines
+            .into_iter()
+            .map(|(loc, line)| (Location::from(loc), line))
+            .collect();
 
         Some(CachedFileResult {
             ecosystem: cached.ecosystem,
-            definitions: cached.definitions,
-            references: cached.references,
+            definitions,
+            references,
             definition_lines,
         })
     }
@@ -101,9 +107,15 @@ impl FileCache {
         let size = metadata.len();
         let (mtime_secs, mtime_nanos) = system_time_to_parts(mtime);
 
-        // Convert FxHashMap to Vec for serialization
-        let definition_lines_vec: Vec<(Location, String)> =
-            definition_lines.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        // Convert Location to SerializedLocation for storage
+        let definitions_ser: Vec<SerializedLocation> =
+            definitions.iter().map(SerializedLocation::from).collect();
+        let references_ser: Vec<SerializedLocation> =
+            references.iter().map(SerializedLocation::from).collect();
+        let definition_lines_ser: Vec<(SerializedLocation, String)> = definition_lines
+            .iter()
+            .map(|(k, v)| (SerializedLocation::from(k), v.clone()))
+            .collect();
 
         let cached = CachedFile {
             version: CACHE_VERSION,
@@ -111,9 +123,9 @@ impl FileCache {
             mtime_nanos,
             size,
             ecosystem,
-            definitions: definitions.to_vec(),
-            references: references.to_vec(),
-            definition_lines: definition_lines_vec,
+            definitions: definitions_ser,
+            references: references_ser,
+            definition_lines: definition_lines_ser,
         };
 
         let bytes = bincode::serialize(&cached)

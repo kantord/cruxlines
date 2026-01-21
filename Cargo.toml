@@ -27,6 +27,7 @@ tree-sitter-typescript = "0.23.2"
 ignore = "0.4.23"
 frecenfile = "0.4.1"
 clap = { version = "4.5.23", features = ["derive"] }
+lasso = { version = "0.7.3", features = ["multi-threaded"] }
 
 [dev-dependencies]
 assert_cmd = "2.0.14"

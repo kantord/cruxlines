@@ -81,19 +81,19 @@ fn print_row(
     if include_metadata {
         println!(
             "{}:{}:{}: rank={:.6} local={:.6} file={:.6} name={} | {}",
-            display_path(&row.definition.path, repo_root),
+            display_path(row.definition.path_str(), repo_root),
             row.definition.line,
             row.definition.column,
             row.rank,
             row.local_score,
             row.file_rank,
-            row.definition.name,
+            row.definition.name_str(),
             line_text
         );
     } else {
         println!(
             "{}:{}:{}: {}",
-            display_path(&row.definition.path, repo_root),
+            display_path(row.definition.path_str(), repo_root),
             row.definition.line,
             row.definition.column,
             line_text
@@ -101,7 +101,8 @@ fn print_row(
     }
 }
 
-fn display_path(path: &std::path::Path, repo_root: &std::path::Path) -> String {
+fn display_path(path: &str, repo_root: &std::path::Path) -> String {
+    let path = std::path::Path::new(path);
     match path.strip_prefix(repo_root) {
         Ok(rel) => rel.display().to_string(),
         Err(_) => path.display().to_string(),

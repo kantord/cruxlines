@@ -2,20 +2,75 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use lasso::Spur;
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 use tree_sitter::{Node, Parser, Tree};
 
 use crate::cache::FileCache;
+use crate::intern::{intern, resolve};
 use crate::timing;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// A source code location with interned path and name for efficiency.
+/// Use `path_str()` and `name_str()` to get string values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Location {
-    pub path: PathBuf,
+    pub path: Spur,
+    pub line: usize,
+    pub column: usize,
+    pub name: Spur,
+}
+
+impl Location {
+    /// Get the path as a string slice
+    #[inline]
+    pub fn path_str(&self) -> &'static str {
+        resolve(self.path)
+    }
+
+    /// Get the name as a string slice
+    #[inline]
+    pub fn name_str(&self) -> &'static str {
+        resolve(self.name)
+    }
+
+    /// Get the path as a PathBuf (for compatibility)
+    #[inline]
+    pub fn path_buf(&self) -> PathBuf {
+        PathBuf::from(self.path_str())
+    }
+}
+
+/// Serializable version of Location for cache storage
+#[derive(Serialize, Deserialize)]
+pub struct SerializedLocation {
+    pub path: String,
     pub line: usize,
     pub column: usize,
     pub name: String,
+}
+
+impl From<&Location> for SerializedLocation {
+    fn from(loc: &Location) -> Self {
+        Self {
+            path: loc.path_str().to_string(),
+            line: loc.line,
+            column: loc.column,
+            name: loc.name_str().to_string(),
+        }
+    }
+}
+
+impl From<SerializedLocation> for Location {
+    fn from(loc: SerializedLocation) -> Self {
+        Self {
+            path: intern(&loc.path),
+            line: loc.line,
+            column: loc.column,
+            name: intern(&loc.name),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -31,8 +86,8 @@ pub struct ReferenceScan {
 }
 
 struct EcosystemSymbols {
-    definitions: FxHashMap<String, Vec<Location>>,
-    definition_positions: FxHashSet<(PathBuf, usize, usize)>,
+    definitions: FxHashMap<Spur, Vec<Location>>,
+    definition_positions: FxHashSet<(Spur, usize, usize)>,
     references: Vec<Location>,
     definition_lines: FxHashMap<Location, String>,
 }
@@ -373,24 +428,24 @@ pub(crate) fn location_from_node(path: &Path, source: &str, node: Node) -> Optio
     let (line, column) = position(node);
     let name = node.utf8_text(source.as_bytes()).ok()?;
     Some(Location {
-        path: path.to_path_buf(),
+        path: intern(&path.to_string_lossy()),
         line,
         column,
-        name: name.to_string(),
+        name: intern(name),
     })
 }
 
 fn record_definition(
     location: Location,
-    definitions: &mut FxHashMap<String, Vec<Location>>,
-    definition_positions: &mut FxHashSet<(PathBuf, usize, usize)>,
+    definitions: &mut FxHashMap<Spur, Vec<Location>>,
+    definition_positions: &mut FxHashSet<(Spur, usize, usize)>,
 ) {
-    let key = location.name.clone();
+    let key = location.name;
     let entry = definitions.entry(key).or_default();
     if !entry.iter().any(|item| {
         item.path == location.path && item.line == location.line && item.column == location.column
     }) {
-        entry.push(location.clone());
+        entry.push(location);
     }
     definition_positions.insert((location.path, location.line, location.column));
 }
@@ -399,17 +454,17 @@ fn record_definition(
 fn make_edges(
     location: &Location,
     ecosystem: crate::languages::Ecosystem,
-    definitions: &FxHashMap<String, Vec<Location>>,
-    definition_positions: &FxHashSet<(PathBuf, usize, usize)>,
+    definitions: &FxHashMap<Spur, Vec<Location>>,
+    definition_positions: &FxHashSet<(Spur, usize, usize)>,
 ) -> Vec<ReferenceEdge> {
-    if definition_positions.contains(&(location.path.clone(), location.line, location.column)) {
+    if definition_positions.contains(&(location.path, location.line, location.column)) {
         return Vec::new();
     }
     if let Some(defs) = definitions.get(&location.name) {
         defs.iter()
             .map(|def| ReferenceEdge {
-                definition: def.clone(),
-                usage: location.clone(),
+                definition: *def,
+                usage: *location,
                 ecosystem,
             })
             .collect()
