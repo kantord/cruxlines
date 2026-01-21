@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use rayon::prelude::*;
+use rustc_hash::FxHashMap;
 
 use crate::find_references::{find_references, Location, ReferenceEdge, ReferenceScan};
 use crate::graph::build_file_graph;
@@ -55,7 +56,7 @@ pub fn cruxlines_from_inputs(
     for grouped in grouped_by_ecosystem.into_values() {
         let file_ranks = rank_files(&grouped);
 
-        let mut name_counts: HashMap<String, usize> = HashMap::new();
+        let mut name_counts: FxHashMap<String, usize> = FxHashMap::default();
         for definition in grouped.keys() {
             *name_counts.entry(definition.name.clone()).or_default() += 1;
         }
@@ -113,7 +114,7 @@ pub fn cruxlines_from_paths(
         let file_ranks = rank_files(&grouped);
         timing::log_with_count(&format!("rank_files ({:?})", ecosystem), start.elapsed(), file_ranks.len());
 
-        let mut name_counts: HashMap<String, usize> = HashMap::new();
+        let mut name_counts: FxHashMap<String, usize> = FxHashMap::default();
         for definition in grouped.keys() {
             *name_counts.entry(definition.name.clone()).or_default() += 1;
         }
@@ -156,13 +157,13 @@ pub fn cruxlines_from_paths(
     Ok(output_rows)
 }
 
-fn rank_files(grouped: &HashMap<Location, Vec<Location>>) -> HashMap<PathBuf, f64> {
+fn rank_files(grouped: &HashMap<Location, Vec<Location>>) -> FxHashMap<PathBuf, f64> {
     let start = Instant::now();
     let (graph, indices) = build_file_graph(grouped);
     timing::log_with_count("    build_file_graph", start.elapsed(), graph.edge_count());
 
     if graph.node_count() == 0 {
-        return HashMap::new();
+        return FxHashMap::default();
     }
 
     if timing::is_enabled() {
@@ -174,7 +175,7 @@ fn rank_files(grouped: &HashMap<Location, Vec<Location>>) -> HashMap<PathBuf, f6
     timing::log_with_count("    page_rank algorithm (parallel)", start.elapsed(), graph.node_count());
 
     let start = Instant::now();
-    let mut out = HashMap::new();
+    let mut out = FxHashMap::default();
     for (path, idx) in indices {
         out.insert(path, ranks[idx.index()]);
     }
@@ -209,9 +210,9 @@ fn compute_edges_and_frecency(
 
 fn build_rows(
     grouped: HashMap<Location, Vec<Location>>,
-    file_ranks: &HashMap<PathBuf, f64>,
+    file_ranks: &FxHashMap<PathBuf, f64>,
     frecency: &HashMap<PathBuf, f64>,
-    name_counts: &HashMap<String, usize>,
+    name_counts: &FxHashMap<String, usize>,
     definition_lines: &HashMap<Location, String>,
 ) -> Vec<OutputRow> {
     grouped

@@ -1,8 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use rayon::prelude::*;
+use rustc_hash::{FxHashMap, FxHashSet};
 use tree_sitter::{Node, Parser, Tree};
 
 use crate::timing;
@@ -28,10 +29,10 @@ pub struct ReferenceScan {
 }
 
 struct EcosystemSymbols {
-    definitions: HashMap<String, Vec<Location>>,
-    definition_positions: HashSet<(PathBuf, usize, usize)>,
+    definitions: FxHashMap<String, Vec<Location>>,
+    definition_positions: FxHashSet<(PathBuf, usize, usize)>,
     references: Vec<Location>,
-    definition_lines: HashMap<Location, String>,
+    definition_lines: FxHashMap<Location, String>,
 }
 
 /// Results from processing a single file
@@ -39,7 +40,7 @@ struct FileResult {
     ecosystem: crate::languages::Ecosystem,
     definitions: Vec<Location>,
     references: Vec<Location>,
-    definition_lines: HashMap<Location, String>,
+    definition_lines: FxHashMap<Location, String>,
 }
 
 pub fn find_references<I, P>(files: I) -> Result<ReferenceScan, crate::io::CruxlinesError>
@@ -73,10 +74,10 @@ where
         let entry = symbols_by_ecosystem
             .entry(result.ecosystem)
             .or_insert_with(|| EcosystemSymbols {
-                definitions: HashMap::new(),
-                definition_positions: HashSet::new(),
+                definitions: FxHashMap::default(),
+                definition_positions: FxHashSet::default(),
                 references: Vec::new(),
-                definition_lines: HashMap::new(),
+                definition_lines: FxHashMap::default(),
             });
 
         for location in result.definitions {
@@ -128,11 +129,11 @@ fn collect_definitions(
     source: &str,
     tree: &Tree,
     language: crate::languages::Language,
-) -> (Vec<Location>, HashMap<Location, String>) {
+) -> (Vec<Location>, FxHashMap<Location, String>) {
     let mut definitions = Vec::new();
-    let mut definition_lines = HashMap::new();
+    let mut definition_lines = FxHashMap::default();
 
-    let emit_def = |loc: Location, defs: &mut Vec<Location>, lines: &mut HashMap<Location, String>| {
+    let emit_def = |loc: Location, defs: &mut Vec<Location>, lines: &mut FxHashMap<Location, String>| {
         record_definition_line(&loc, source, lines);
         defs.push(loc);
     };
@@ -274,8 +275,8 @@ pub(crate) fn location_from_node(path: &Path, source: &str, node: Node) -> Optio
 
 fn record_definition(
     location: Location,
-    definitions: &mut HashMap<String, Vec<Location>>,
-    definition_positions: &mut HashSet<(PathBuf, usize, usize)>,
+    definitions: &mut FxHashMap<String, Vec<Location>>,
+    definition_positions: &mut FxHashSet<(PathBuf, usize, usize)>,
 ) {
     let key = location.name.clone();
     let entry = definitions.entry(key).or_default();
@@ -291,8 +292,8 @@ fn record_definition(
 fn make_edges(
     location: &Location,
     ecosystem: crate::languages::Ecosystem,
-    definitions: &HashMap<String, Vec<Location>>,
-    definition_positions: &HashSet<(PathBuf, usize, usize)>,
+    definitions: &FxHashMap<String, Vec<Location>>,
+    definition_positions: &FxHashSet<(PathBuf, usize, usize)>,
 ) -> Vec<ReferenceEdge> {
     if definition_positions.contains(&(location.path.clone(), location.line, location.column)) {
         return Vec::new();
@@ -318,7 +319,7 @@ fn position(node: Node) -> (usize, usize) {
 fn record_definition_line(
     location: &Location,
     source: &str,
-    lines: &mut HashMap<Location, String>,
+    lines: &mut FxHashMap<Location, String>,
 ) {
     if lines.contains_key(location) {
         return;

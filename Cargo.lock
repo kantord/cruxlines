@@ -287,6 +287,7 @@ dependencies = [
  "petgraph",
  "predicates",
  "rayon",
+ "rustc-hash",
  "tree-sitter",
  "tree-sitter-java",
  "tree-sitter-javascript",
