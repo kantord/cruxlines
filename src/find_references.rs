@@ -1,7 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use tree_sitter::{Node, Parser, Tree};
+
+use crate::timing;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Location {
@@ -37,15 +40,29 @@ where
 {
     let mut symbols_by_ecosystem: HashMap<crate::languages::Ecosystem, EcosystemSymbols> =
         HashMap::new();
+
+    let mut total_parse_time = std::time::Duration::ZERO;
+    let mut total_definitions_time = std::time::Duration::ZERO;
+    let mut total_references_time = std::time::Duration::ZERO;
+    let mut total_definition_lines_time = std::time::Duration::ZERO;
+    let mut file_count = 0usize;
+    let mut total_definitions = 0usize;
+    let mut total_references = 0usize;
+
     for item in files {
         let (path, source) = item?;
         let path = path.into();
         let Some(language) = crate::languages::language_for_path(&path) else {
             continue;
         };
+
+        let parse_start = Instant::now();
         let Some(tree) = parse_tree(&language, &source) else {
             continue;
         };
+        total_parse_time += parse_start.elapsed();
+        file_count += 1;
+
         let ecosystem = crate::languages::ecosystem_for_language(language);
         let entry = symbols_by_ecosystem.entry(ecosystem).or_insert_with(|| EcosystemSymbols {
             definitions: HashMap::new(),
@@ -53,6 +70,10 @@ where
             references: Vec::new(),
             definition_lines: HashMap::new(),
         });
+
+        let defs_before = entry.definitions.values().map(|v| v.len()).sum::<usize>();
+
+        let def_start = Instant::now();
         match language {
             crate::languages::Language::Java => crate::languages::java::emit_definitions(
                 &path,
@@ -64,7 +85,9 @@ where
                         &mut entry.definitions,
                         &mut entry.definition_positions,
                     );
+                    let line_start = Instant::now();
                     record_definition_line(&location, &source, &mut entry.definition_lines);
+                    total_definition_lines_time += line_start.elapsed();
                 },
             ),
             crate::languages::Language::Kotlin => crate::languages::kotlin::emit_definitions(
@@ -77,7 +100,9 @@ where
                         &mut entry.definitions,
                         &mut entry.definition_positions,
                     );
+                    let line_start = Instant::now();
                     record_definition_line(&location, &source, &mut entry.definition_lines);
+                    total_definition_lines_time += line_start.elapsed();
                 },
             ),
             crate::languages::Language::Python => crate::languages::python::emit_definitions(
@@ -90,7 +115,9 @@ where
                         &mut entry.definitions,
                         &mut entry.definition_positions,
                     );
+                    let line_start = Instant::now();
                     record_definition_line(&location, &source, &mut entry.definition_lines);
+                    total_definition_lines_time += line_start.elapsed();
                 },
             ),
             crate::languages::Language::JavaScript
@@ -106,7 +133,9 @@ where
                             &mut entry.definitions,
                             &mut entry.definition_positions,
                         );
+                        let line_start = Instant::now();
                         record_definition_line(&location, &source, &mut entry.definition_lines);
+                        total_definition_lines_time += line_start.elapsed();
                     },
                 )
             }
@@ -120,10 +149,17 @@ where
                         &mut entry.definitions,
                         &mut entry.definition_positions,
                     );
+                    let line_start = Instant::now();
                     record_definition_line(&location, &source, &mut entry.definition_lines);
+                    total_definition_lines_time += line_start.elapsed();
                 },
             ),
         }
+        total_definitions_time += def_start.elapsed();
+        total_definitions += entry.definitions.values().map(|v| v.len()).sum::<usize>() - defs_before;
+
+        let refs_before = entry.references.len();
+        let ref_start = Instant::now();
         match language {
             crate::languages::Language::Java => crate::languages::java::emit_references(
                 &path,
@@ -160,8 +196,16 @@ where
                 |location| entry.references.push(location),
             ),
         }
+        total_references_time += ref_start.elapsed();
+        total_references += entry.references.len() - refs_before;
     }
 
+    timing::log_with_count("  parse_tree (total)", total_parse_time, file_count);
+    timing::log_with_count("  emit_definitions (total)", total_definitions_time, total_definitions);
+    timing::log_with_count("    record_definition_line (total)", total_definition_lines_time, total_definitions);
+    timing::log_with_count("  emit_references (total)", total_references_time, total_references);
+
+    let start = Instant::now();
     let mut edges = Vec::new();
     let mut definition_lines = HashMap::new();
     for (ecosystem, symbols) in &symbols_by_ecosystem {
@@ -180,6 +224,7 @@ where
                 .or_insert_with(|| line.clone());
         }
     }
+    timing::log_with_count("  build_edges", start.elapsed(), edges.len());
 
     Ok(ReferenceScan {
         edges,

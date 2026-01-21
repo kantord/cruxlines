@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use crate::find_references::{find_references, Location, ReferenceEdge, ReferenceScan};
 use crate::graph::build_file_graph;
 use crate::languages::Ecosystem;
 use crate::io::{gather_paths, CruxlinesError};
+use crate::timing;
 
 #[derive(Debug, Clone)]
 pub struct OutputRow {
@@ -22,7 +24,10 @@ pub fn cruxlines(
     repo_root: &PathBuf,
     ecosystems: &std::collections::HashSet<Ecosystem>,
 ) -> Result<Vec<OutputRow>, CruxlinesError> {
+    let start = Instant::now();
     let paths = gather_paths(repo_root, ecosystems);
+    timing::log_with_count("gather_paths", start.elapsed(), paths.len());
+
     cruxlines_from_paths(paths, Some(repo_root.clone()))
 }
 
@@ -90,28 +95,40 @@ pub fn cruxlines_from_paths(
     repo_root: Option<PathBuf>,
 ) -> Result<Vec<OutputRow>, CruxlinesError> {
     let inputs = paths.into_iter().filter_map(read_input);
-    let (scan, frecency) = compute_edges_and_frecency(inputs, repo_root)?;
 
+    let start = Instant::now();
+    let (scan, frecency) = compute_edges_and_frecency(inputs, repo_root)?;
+    timing::log_with_count("compute_edges_and_frecency (total)", start.elapsed(), scan.edges.len());
+
+    let start = Instant::now();
     let grouped_by_ecosystem = group_edges_by_ecosystem(scan.edges);
     let capacity: usize = grouped_by_ecosystem.values().map(|grouped| grouped.len()).sum();
+    timing::log_with_count("group_edges_by_ecosystem", start.elapsed(), capacity);
+
     let mut output_rows = Vec::with_capacity(capacity);
-    for grouped in grouped_by_ecosystem.into_values() {
+    for (ecosystem, grouped) in grouped_by_ecosystem {
+        let start = Instant::now();
         let file_ranks = rank_files(&grouped);
+        timing::log_with_count(&format!("rank_files ({:?})", ecosystem), start.elapsed(), file_ranks.len());
 
         let mut name_counts: HashMap<String, usize> = HashMap::new();
         for definition in grouped.keys() {
             *name_counts.entry(definition.name.clone()).or_default() += 1;
         }
 
-        output_rows.extend(build_rows(
+        let start = Instant::now();
+        let rows = build_rows(
             grouped,
             &file_ranks,
             &frecency,
             &name_counts,
             &scan.definition_lines,
-        ));
+        );
+        timing::log_with_count(&format!("build_rows ({:?})", ecosystem), start.elapsed(), rows.len());
+        output_rows.extend(rows);
     }
 
+    let start = Instant::now();
     output_rows.sort_by(|a, b| {
         b.rank
             .partial_cmp(&a.rank)
@@ -132,20 +149,34 @@ pub fn cruxlines_from_paths(
                 key_a.cmp(&key_b)
             })
     });
+    timing::log_with_count("sort_output_rows", start.elapsed(), output_rows.len());
 
     Ok(output_rows)
 }
 
 fn rank_files(grouped: &HashMap<Location, Vec<Location>>) -> HashMap<PathBuf, f64> {
+    let start = Instant::now();
     let (graph, indices) = build_file_graph(grouped);
+    timing::log_with_count("    build_file_graph", start.elapsed(), graph.edge_count());
+
     if graph.node_count() == 0 {
         return HashMap::new();
     }
-    let ranks = petgraph::algo::page_rank(&graph, 0.85_f64, 20);
+
+    if timing::is_enabled() {
+        eprintln!("[TIMING]     graph: {} nodes, {} edges", graph.node_count(), graph.edge_count());
+    }
+
+    let start = Instant::now();
+    let ranks = petgraph::algo::page_rank::parallel_page_rank(&graph, 0.85_f64, 20, None);
+    timing::log_with_count("    page_rank algorithm (parallel)", start.elapsed(), graph.node_count());
+
+    let start = Instant::now();
     let mut out = HashMap::new();
     for (path, idx) in indices {
         out.insert(path, ranks[idx.index()]);
     }
+    timing::log_with_count("    collect ranks", start.elapsed(), out.len());
     out
 }
 
@@ -153,17 +184,25 @@ fn compute_edges_and_frecency(
     inputs: impl IntoIterator<Item = Result<(PathBuf, String), CruxlinesError>>,
     repo_root: Option<PathBuf>,
 ) -> Result<(ReferenceScan, HashMap<PathBuf, f64>), CruxlinesError> {
-    let frecency_handle = std::thread::spawn(move || frecency_scores(repo_root.as_deref()));
+    let frecency_start = Instant::now();
+    let frecency_handle = std::thread::spawn(move || {
+        let result = frecency_scores(repo_root.as_deref());
+        timing::log_with_count("frecency_scores (thread)", frecency_start.elapsed(), result.len());
+        result
+    });
 
+    let start = Instant::now();
     let scan = find_references(inputs)?;
+    timing::log_with_count("find_references", start.elapsed(), scan.edges.len());
 
-    match frecency_handle.join() {
-        Ok(frecency) => Ok((scan, frecency)),
-        Err(_) => Ok((
-            scan,
-            HashMap::new(),
-        )),
-    }
+    let start = Instant::now();
+    let frecency = match frecency_handle.join() {
+        Ok(frecency) => frecency,
+        Err(_) => HashMap::new(),
+    };
+    timing::log("frecency_handle.join() wait", start.elapsed());
+
+    Ok((scan, frecency))
 }
 
 fn build_rows(
