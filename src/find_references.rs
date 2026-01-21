@@ -4,11 +4,13 @@ use std::time::Instant;
 
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
+use serde::{Deserialize, Serialize};
 use tree_sitter::{Node, Parser, Tree};
 
+use crate::cache::FileCache;
 use crate::timing;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Location {
     pub path: PathBuf,
     pub line: usize,
@@ -122,6 +124,111 @@ where
         edges,
         definition_lines,
     })
+}
+
+/// Find references with caching support. Only reads and parses files that aren't cached.
+pub fn find_references_cached(
+    paths: Vec<PathBuf>,
+    cache: &FileCache,
+) -> Result<ReferenceScan, crate::io::CruxlinesError> {
+    let start = Instant::now();
+
+    // Process files in parallel - check cache first, parse on miss
+    let file_results: Vec<FileResult> = paths
+        .par_iter()
+        .filter_map(|path| process_file_cached(path, cache))
+        .collect();
+    timing::log_with_count(
+        "  process files (cached)",
+        start.elapsed(),
+        file_results.len(),
+    );
+
+    // Rest is same as find_references
+    let start = Instant::now();
+    let mut symbols_by_ecosystem: HashMap<crate::languages::Ecosystem, EcosystemSymbols> =
+        HashMap::new();
+
+    for result in file_results {
+        let entry = symbols_by_ecosystem
+            .entry(result.ecosystem)
+            .or_insert_with(|| EcosystemSymbols {
+                definitions: FxHashMap::default(),
+                definition_positions: FxHashSet::default(),
+                references: Vec::new(),
+                definition_lines: FxHashMap::default(),
+            });
+
+        for location in result.definitions {
+            record_definition(
+                location,
+                &mut entry.definitions,
+                &mut entry.definition_positions,
+            );
+        }
+        entry.references.extend(result.references);
+        entry.definition_lines.extend(result.definition_lines);
+    }
+    timing::log_with_count("  merge results", start.elapsed(), symbols_by_ecosystem.len());
+
+    let start = Instant::now();
+    let mut edges = Vec::new();
+    let mut definition_lines = HashMap::new();
+    for (ecosystem, symbols) in &symbols_by_ecosystem {
+        let ecosystem_edges: Vec<ReferenceEdge> = symbols
+            .references
+            .par_iter()
+            .flat_map(|reference| {
+                make_edges(
+                    reference,
+                    *ecosystem,
+                    &symbols.definitions,
+                    &symbols.definition_positions,
+                )
+            })
+            .collect();
+        edges.extend(ecosystem_edges);
+
+        for (location, line) in &symbols.definition_lines {
+            definition_lines
+                .entry(location.clone())
+                .or_insert_with(|| line.clone());
+        }
+    }
+    timing::log_with_count("  build_edges (parallel)", start.elapsed(), edges.len());
+
+    Ok(ReferenceScan {
+        edges,
+        definition_lines,
+    })
+}
+
+/// Process a file with cache support - returns cached result or parses fresh
+fn process_file_cached(path: &PathBuf, cache: &FileCache) -> Option<FileResult> {
+    // Try cache first
+    if let Some(cached) = cache.get(path) {
+        return Some(FileResult {
+            ecosystem: cached.ecosystem,
+            definitions: cached.definitions,
+            references: cached.references,
+            definition_lines: cached.definition_lines,
+        });
+    }
+
+    // Cache miss - read and parse file
+    let source = std::fs::read_to_string(path).ok()?;
+    let result = process_file(path, &source)?;
+
+    // Save to cache (ignore errors)
+    let _ = cache.set(
+        path,
+        result.ecosystem,
+        &result.definitions,
+        &result.references,
+        &result.definition_lines,
+    );
+
+    Some(result)
 }
 
 fn collect_definitions(

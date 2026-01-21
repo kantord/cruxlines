@@ -5,7 +5,8 @@ use std::time::Instant;
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 
-use crate::find_references::{find_references, Location, ReferenceEdge, ReferenceScan};
+use crate::cache::FileCache;
+use crate::find_references::{find_references, find_references_cached, Location, ReferenceEdge, ReferenceScan};
 use crate::graph::build_file_graph;
 use crate::languages::Ecosystem;
 use crate::io::{gather_paths, CruxlinesError};
@@ -97,10 +98,15 @@ pub fn cruxlines_from_paths(
     paths: Vec<PathBuf>,
     repo_root: Option<PathBuf>,
 ) -> Result<Vec<OutputRow>, CruxlinesError> {
-    let inputs = paths.into_iter().filter_map(read_input);
-
     let start = Instant::now();
-    let (scan, frecency) = compute_edges_and_frecency(inputs, repo_root)?;
+    let (scan, frecency) = if let Some(ref root) = repo_root {
+        // Use caching when repo_root is available
+        compute_edges_and_frecency_cached(paths, root)?
+    } else {
+        // Fall back to non-cached version
+        let inputs = paths.into_iter().filter_map(read_input);
+        compute_edges_and_frecency(inputs, repo_root)?
+    };
     timing::log_with_count("compute_edges_and_frecency (total)", start.elapsed(), scan.edges.len());
 
     let start = Instant::now();
@@ -197,6 +203,34 @@ fn compute_edges_and_frecency(
     let start = Instant::now();
     let scan = find_references(inputs)?;
     timing::log_with_count("find_references", start.elapsed(), scan.edges.len());
+
+    let start = Instant::now();
+    let frecency = match frecency_handle.join() {
+        Ok(frecency) => frecency,
+        Err(_) => HashMap::new(),
+    };
+    timing::log("frecency_handle.join() wait", start.elapsed());
+
+    Ok((scan, frecency))
+}
+
+fn compute_edges_and_frecency_cached(
+    paths: Vec<PathBuf>,
+    repo_root: &PathBuf,
+) -> Result<(ReferenceScan, HashMap<PathBuf, f64>), CruxlinesError> {
+    let cache = FileCache::new(repo_root);
+
+    let frecency_start = Instant::now();
+    let repo_root_clone = repo_root.clone();
+    let frecency_handle = std::thread::spawn(move || {
+        let result = frecency_scores(Some(repo_root_clone.as_path()));
+        timing::log_with_count("frecency_scores (thread)", frecency_start.elapsed(), result.len());
+        result
+    });
+
+    let start = Instant::now();
+    let scan = find_references_cached(paths, &cache)?;
+    timing::log_with_count("find_references (cached)", start.elapsed(), scan.edges.len());
 
     let start = Instant::now();
     let frecency = match frecency_handle.join() {

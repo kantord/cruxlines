@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use serde::{Deserialize, Serialize};
+
 pub(crate) mod java;
 pub(crate) mod javascript;
 pub(crate) mod kotlin;
@@ -17,7 +19,7 @@ pub enum Language {
     Rust,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Ecosystem {
     Java,
     Python,

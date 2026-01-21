@@ -1,4 +1,5 @@
 mod analysis;
+mod cache;
 mod find_references;
 mod graph;
 mod io;
