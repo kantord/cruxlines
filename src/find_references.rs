@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use rayon::prelude::*;
 use tree_sitter::{Node, Parser, Tree};
 
 use crate::timing;
@@ -33,177 +34,62 @@ struct EcosystemSymbols {
     definition_lines: HashMap<Location, String>,
 }
 
+/// Results from processing a single file
+struct FileResult {
+    ecosystem: crate::languages::Ecosystem,
+    definitions: Vec<Location>,
+    references: Vec<Location>,
+    definition_lines: HashMap<Location, String>,
+}
+
 pub fn find_references<I, P>(files: I) -> Result<ReferenceScan, crate::io::CruxlinesError>
 where
     I: IntoIterator<Item = Result<(P, String), crate::io::CruxlinesError>>,
     P: Into<PathBuf>,
 {
+    // Collect files first (need Vec for parallel iteration)
+    let start = Instant::now();
+    let files: Vec<(PathBuf, String)> = files
+        .into_iter()
+        .filter_map(|item| item.ok())
+        .map(|(p, s)| (p.into(), s))
+        .collect();
+    timing::log_with_count("  collect files", start.elapsed(), files.len());
+
+    // Process files in parallel
+    let start = Instant::now();
+    let file_results: Vec<FileResult> = files
+        .par_iter()
+        .filter_map(|(path, source)| process_file(path, source))
+        .collect();
+    timing::log_with_count("  process files (parallel)", start.elapsed(), file_results.len());
+
+    // Merge results by ecosystem
+    let start = Instant::now();
     let mut symbols_by_ecosystem: HashMap<crate::languages::Ecosystem, EcosystemSymbols> =
         HashMap::new();
 
-    let mut total_parse_time = std::time::Duration::ZERO;
-    let mut total_definitions_time = std::time::Duration::ZERO;
-    let mut total_references_time = std::time::Duration::ZERO;
-    let mut total_definition_lines_time = std::time::Duration::ZERO;
-    let mut file_count = 0usize;
-    let mut total_definitions = 0usize;
-    let mut total_references = 0usize;
+    for result in file_results {
+        let entry = symbols_by_ecosystem
+            .entry(result.ecosystem)
+            .or_insert_with(|| EcosystemSymbols {
+                definitions: HashMap::new(),
+                definition_positions: HashSet::new(),
+                references: Vec::new(),
+                definition_lines: HashMap::new(),
+            });
 
-    for item in files {
-        let (path, source) = item?;
-        let path = path.into();
-        let Some(language) = crate::languages::language_for_path(&path) else {
-            continue;
-        };
-
-        let parse_start = Instant::now();
-        let Some(tree) = parse_tree(&language, &source) else {
-            continue;
-        };
-        total_parse_time += parse_start.elapsed();
-        file_count += 1;
-
-        let ecosystem = crate::languages::ecosystem_for_language(language);
-        let entry = symbols_by_ecosystem.entry(ecosystem).or_insert_with(|| EcosystemSymbols {
-            definitions: HashMap::new(),
-            definition_positions: HashSet::new(),
-            references: Vec::new(),
-            definition_lines: HashMap::new(),
-        });
-
-        let defs_before = entry.definitions.values().map(|v| v.len()).sum::<usize>();
-
-        let def_start = Instant::now();
-        match language {
-            crate::languages::Language::Java => crate::languages::java::emit_definitions(
-                &path,
-                &source,
-                &tree,
-                |location| {
-                    record_definition(
-                        location.clone(),
-                        &mut entry.definitions,
-                        &mut entry.definition_positions,
-                    );
-                    let line_start = Instant::now();
-                    record_definition_line(&location, &source, &mut entry.definition_lines);
-                    total_definition_lines_time += line_start.elapsed();
-                },
-            ),
-            crate::languages::Language::Kotlin => crate::languages::kotlin::emit_definitions(
-                &path,
-                &source,
-                &tree,
-                |location| {
-                    record_definition(
-                        location.clone(),
-                        &mut entry.definitions,
-                        &mut entry.definition_positions,
-                    );
-                    let line_start = Instant::now();
-                    record_definition_line(&location, &source, &mut entry.definition_lines);
-                    total_definition_lines_time += line_start.elapsed();
-                },
-            ),
-            crate::languages::Language::Python => crate::languages::python::emit_definitions(
-                &path,
-                &source,
-                &tree,
-                |location| {
-                    record_definition(
-                        location.clone(),
-                        &mut entry.definitions,
-                        &mut entry.definition_positions,
-                    );
-                    let line_start = Instant::now();
-                    record_definition_line(&location, &source, &mut entry.definition_lines);
-                    total_definition_lines_time += line_start.elapsed();
-                },
-            ),
-            crate::languages::Language::JavaScript
-            | crate::languages::Language::TypeScript
-            | crate::languages::Language::TypeScriptReact => {
-                crate::languages::javascript::emit_definitions(
-                    &path,
-                    &source,
-                    &tree,
-                    |location| {
-                        record_definition(
-                            location.clone(),
-                            &mut entry.definitions,
-                            &mut entry.definition_positions,
-                        );
-                        let line_start = Instant::now();
-                        record_definition_line(&location, &source, &mut entry.definition_lines);
-                        total_definition_lines_time += line_start.elapsed();
-                    },
-                )
-            }
-            crate::languages::Language::Rust => crate::languages::rust::emit_definitions(
-                &path,
-                &source,
-                &tree,
-                |location| {
-                    record_definition(
-                        location.clone(),
-                        &mut entry.definitions,
-                        &mut entry.definition_positions,
-                    );
-                    let line_start = Instant::now();
-                    record_definition_line(&location, &source, &mut entry.definition_lines);
-                    total_definition_lines_time += line_start.elapsed();
-                },
-            ),
+        for location in result.definitions {
+            record_definition(
+                location,
+                &mut entry.definitions,
+                &mut entry.definition_positions,
+            );
         }
-        total_definitions_time += def_start.elapsed();
-        total_definitions += entry.definitions.values().map(|v| v.len()).sum::<usize>() - defs_before;
-
-        let refs_before = entry.references.len();
-        let ref_start = Instant::now();
-        match language {
-            crate::languages::Language::Java => crate::languages::java::emit_references(
-                &path,
-                &source,
-                &tree,
-                |location| entry.references.push(location),
-            ),
-            crate::languages::Language::Kotlin => crate::languages::kotlin::emit_references(
-                &path,
-                &source,
-                &tree,
-                |location| entry.references.push(location),
-            ),
-            crate::languages::Language::Python => crate::languages::python::emit_references(
-                &path,
-                &source,
-                &tree,
-                |location| entry.references.push(location),
-            ),
-            crate::languages::Language::JavaScript
-            | crate::languages::Language::TypeScript
-            | crate::languages::Language::TypeScriptReact => {
-                crate::languages::javascript::emit_references(
-                    &path,
-                    &source,
-                    &tree,
-                    |location| entry.references.push(location),
-                )
-            }
-            crate::languages::Language::Rust => crate::languages::rust::emit_references(
-                &path,
-                &source,
-                &tree,
-                |location| entry.references.push(location),
-            ),
-        }
-        total_references_time += ref_start.elapsed();
-        total_references += entry.references.len() - refs_before;
+        entry.references.extend(result.references);
+        entry.definition_lines.extend(result.definition_lines);
     }
-
-    timing::log_with_count("  parse_tree (total)", total_parse_time, file_count);
-    timing::log_with_count("  emit_definitions (total)", total_definitions_time, total_definitions);
-    timing::log_with_count("    record_definition_line (total)", total_definition_lines_time, total_definitions);
-    timing::log_with_count("  emit_references (total)", total_references_time, total_references);
+    timing::log_with_count("  merge results", start.elapsed(), symbols_by_ecosystem.len());
 
     let start = Instant::now();
     let mut edges = Vec::new();
@@ -228,6 +114,109 @@ where
 
     Ok(ReferenceScan {
         edges,
+        definition_lines,
+    })
+}
+
+/// Process a single file: parse and extract definitions/references
+fn process_file(path: &PathBuf, source: &str) -> Option<FileResult> {
+    let language = crate::languages::language_for_path(path)?;
+    let tree = parse_tree(&language, source)?;
+    let ecosystem = crate::languages::ecosystem_for_language(language);
+
+    let mut definitions = Vec::new();
+    let mut definition_lines = HashMap::new();
+
+    match language {
+        crate::languages::Language::Java => {
+            let mut defs = Vec::new();
+            let mut lines = HashMap::new();
+            crate::languages::java::emit_definitions(path, source, &tree, |loc| {
+                record_definition_line(&loc, source, &mut lines);
+                defs.push(loc);
+            });
+            definitions = defs;
+            definition_lines = lines;
+        }
+        crate::languages::Language::Kotlin => {
+            let mut defs = Vec::new();
+            let mut lines = HashMap::new();
+            crate::languages::kotlin::emit_definitions(path, source, &tree, |loc| {
+                record_definition_line(&loc, source, &mut lines);
+                defs.push(loc);
+            });
+            definitions = defs;
+            definition_lines = lines;
+        }
+        crate::languages::Language::Python => {
+            let mut defs = Vec::new();
+            let mut lines = HashMap::new();
+            crate::languages::python::emit_definitions(path, source, &tree, |loc| {
+                record_definition_line(&loc, source, &mut lines);
+                defs.push(loc);
+            });
+            definitions = defs;
+            definition_lines = lines;
+        }
+        crate::languages::Language::JavaScript
+        | crate::languages::Language::TypeScript
+        | crate::languages::Language::TypeScriptReact => {
+            let mut defs = Vec::new();
+            let mut lines = HashMap::new();
+            crate::languages::javascript::emit_definitions(path, source, &tree, |loc| {
+                record_definition_line(&loc, source, &mut lines);
+                defs.push(loc);
+            });
+            definitions = defs;
+            definition_lines = lines;
+        }
+        crate::languages::Language::Rust => {
+            let mut defs = Vec::new();
+            let mut lines = HashMap::new();
+            crate::languages::rust::emit_definitions(path, source, &tree, |loc| {
+                record_definition_line(&loc, source, &mut lines);
+                defs.push(loc);
+            });
+            definitions = defs;
+            definition_lines = lines;
+        }
+    }
+
+    let mut references = Vec::new();
+    match language {
+        crate::languages::Language::Java => {
+            crate::languages::java::emit_references(path, source, &tree, |loc| {
+                references.push(loc);
+            });
+        }
+        crate::languages::Language::Kotlin => {
+            crate::languages::kotlin::emit_references(path, source, &tree, |loc| {
+                references.push(loc);
+            });
+        }
+        crate::languages::Language::Python => {
+            crate::languages::python::emit_references(path, source, &tree, |loc| {
+                references.push(loc);
+            });
+        }
+        crate::languages::Language::JavaScript
+        | crate::languages::Language::TypeScript
+        | crate::languages::Language::TypeScriptReact => {
+            crate::languages::javascript::emit_references(path, source, &tree, |loc| {
+                references.push(loc);
+            });
+        }
+        crate::languages::Language::Rust => {
+            crate::languages::rust::emit_references(path, source, &tree, |loc| {
+                references.push(loc);
+            });
+        }
+    }
+
+    Some(FileResult {
+        ecosystem,
+        definitions,
+        references,
         definition_lines,
     })
 }

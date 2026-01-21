@@ -286,6 +286,7 @@ dependencies = [
  "ignore",
  "petgraph",
  "predicates",
+ "rayon",
  "tree-sitter",
  "tree-sitter-java",
  "tree-sitter-javascript",
