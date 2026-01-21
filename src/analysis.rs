@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Instant;
 
+use rayon::prelude::*;
+
 use crate::find_references::{find_references, Location, ReferenceEdge, ReferenceScan};
 use crate::graph::build_file_graph;
 use crate::languages::Ecosystem;
@@ -212,48 +214,49 @@ fn build_rows(
     name_counts: &HashMap<String, usize>,
     definition_lines: &HashMap<Location, String>,
 ) -> Vec<OutputRow> {
-    let mut rows = Vec::with_capacity(grouped.len());
-    for (definition, mut references) in grouped {
-        references.sort_by(|a, b| {
-            let key_a = (&a.path, a.line, a.column, &a.name);
-            let key_b = (&b.path, b.line, b.column, &b.name);
-            key_a.cmp(&key_b)
-        });
-        let name_count = name_counts
-            .get(&definition.name)
-            .copied()
-            .unwrap_or(1) as f64;
-        let weighted_refs: f64 = references
-            .iter()
-            .map(|reference| {
-                let file_rank = file_ranks
-                    .get(&reference.path)
-                    .copied()
-                    .unwrap_or(0.0);
-                let frecency = frecency.get(&reference.path).copied().unwrap_or(1.0);
-                file_rank * frecency
-            })
-            .sum();
-        let local_score = weighted_refs / name_count;
-        let file_rank = file_ranks
-            .get(&definition.path)
-            .copied()
-            .unwrap_or(0.0);
-        let rank = local_score * file_rank;
-        let definition_line = definition_lines
-            .get(&definition)
-            .cloned()
-            .unwrap_or_default();
-        rows.push(OutputRow {
-            rank,
-            local_score,
-            file_rank,
-            definition,
-            definition_line,
-            references,
-        });
-    }
-    rows
+    grouped
+        .into_par_iter()
+        .map(|(definition, mut references)| {
+            references.sort_by(|a, b| {
+                let key_a = (&a.path, a.line, a.column, &a.name);
+                let key_b = (&b.path, b.line, b.column, &b.name);
+                key_a.cmp(&key_b)
+            });
+            let name_count = name_counts
+                .get(&definition.name)
+                .copied()
+                .unwrap_or(1) as f64;
+            let weighted_refs: f64 = references
+                .iter()
+                .map(|reference| {
+                    let file_rank = file_ranks
+                        .get(&reference.path)
+                        .copied()
+                        .unwrap_or(0.0);
+                    let frecency = frecency.get(&reference.path).copied().unwrap_or(1.0);
+                    file_rank * frecency
+                })
+                .sum();
+            let local_score = weighted_refs / name_count;
+            let file_rank = file_ranks
+                .get(&definition.path)
+                .copied()
+                .unwrap_or(0.0);
+            let rank = local_score * file_rank;
+            let definition_line = definition_lines
+                .get(&definition)
+                .cloned()
+                .unwrap_or_default();
+            OutputRow {
+                rank,
+                local_score,
+                file_rank,
+                definition,
+                definition_line,
+                references,
+            }
+        })
+        .collect()
 }
 
 fn group_edges_by_ecosystem(
