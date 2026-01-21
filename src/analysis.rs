@@ -168,7 +168,7 @@ fn rank_files(grouped: &HashMap<Location, Vec<Location>>) -> HashMap<PathBuf, f6
     }
 
     let start = Instant::now();
-    let ranks = petgraph::algo::page_rank::parallel_page_rank(&graph, 0.85_f64, 20, None);
+    let ranks = petgraph::algo::page_rank::parallel_page_rank(&graph, 0.85_f64, 5, None);
     timing::log_with_count("    page_rank algorithm (parallel)", start.elapsed(), graph.node_count());
 
     let start = Instant::now();
