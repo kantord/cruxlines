@@ -11,7 +11,7 @@ use crate::find_references::{Location, SerializedLocation};
 use crate::languages::Ecosystem;
 
 // Bump version when cache format changes
-const CACHE_VERSION: u32 = 2;
+const CACHE_VERSION: u32 = 3;
 
 #[derive(Serialize, Deserialize)]
 struct CachedFile {
@@ -55,7 +55,8 @@ impl FileCache {
     pub fn get(&self, path: &Path) -> Option<CachedFileResult> {
         let cache_path = self.cache_path(path);
         let bytes = fs::read(&cache_path).ok()?;
-        let cached: CachedFile = bincode::deserialize(&bytes).ok()?;
+        let (cached, _): (CachedFile, _) =
+            bincode::serde::decode_from_slice(&bytes, bincode::config::standard()).ok()?;
 
         // Check version
         if cached.version != CACHE_VERSION {
@@ -129,7 +130,8 @@ impl FileCache {
             definition_lines: definition_lines_ser,
         };
 
-        let bytes = bincode::serialize(&cached).map_err(io::Error::other)?;
+        let bytes =
+            bincode::serde::encode_to_vec(&cached, bincode::config::standard()).map_err(io::Error::other)?;
 
         // Ensure cache directory exists
         fs::create_dir_all(&self.cache_dir)?;
