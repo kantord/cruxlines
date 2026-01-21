@@ -1,10 +1,9 @@
 use std::path::PathBuf;
 use std::process;
-use std::time::Instant;
 
 use clap::{Parser, ValueEnum};
 
-use cruxlines::{CruxlinesError, Ecosystem, OutputRow, cruxlines, timing};
+use cruxlines::{CruxlinesError, Ecosystem, OutputRow, cruxlines};
 
 #[derive(Debug, Parser)]
 struct Cli {
@@ -27,9 +26,6 @@ enum EcosystemArg {
 }
 
 fn main() {
-    timing::init();
-    let overall_start = Instant::now();
-
     let cli = Cli::parse();
     let cwd = match std::env::current_dir() {
         Ok(cwd) => cwd,
@@ -44,7 +40,6 @@ fn main() {
     };
     let ecosystems = selected_ecosystems(&cli.ecosystems);
 
-    let start = Instant::now();
     let output_rows = match cruxlines(&repo_root, &ecosystems) {
         Ok(rows) => rows,
         Err(err) => {
@@ -52,7 +47,6 @@ fn main() {
             process::exit(1);
         }
     };
-    timing::log_with_count("cruxlines() total", start.elapsed(), output_rows.len());
 
     // Test-only hook to coordinate snapshot timing in integration tests.
     if let Ok(ready_path) = std::env::var("CRUXLINES_TEST_READY_FILE") {
@@ -64,13 +58,9 @@ fn main() {
         std::thread::sleep(std::time::Duration::from_millis(pause_ms));
     }
 
-    let start = Instant::now();
     for row in &output_rows {
         print_row(row, &repo_root, cli.metadata);
     }
-    timing::log_with_count("print_rows", start.elapsed(), output_rows.len());
-
-    timing::log("TOTAL (including output)", overall_start.elapsed());
 }
 
 fn print_row(row: &OutputRow, repo_root: &std::path::Path, include_metadata: bool) {

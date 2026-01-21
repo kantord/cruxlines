@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
 
 use lasso::Spur;
 use rayon::prelude::*;
@@ -10,7 +9,6 @@ use tree_sitter::{Node, Parser, Tree};
 
 use crate::cache::FileCache;
 use crate::intern::{intern, resolve};
-use crate::timing;
 
 /// A source code location with interned path and name for efficiency.
 /// Use `path_str()` and `name_str()` to get string values.
@@ -106,28 +104,19 @@ where
     P: Into<PathBuf>,
 {
     // Collect files first (need Vec for parallel iteration)
-    let start = Instant::now();
     let files: Vec<(PathBuf, String)> = files
         .into_iter()
         .filter_map(|item| item.ok())
         .map(|(p, s)| (p.into(), s))
         .collect();
-    timing::log_with_count("  collect files", start.elapsed(), files.len());
 
     // Process files in parallel
-    let start = Instant::now();
     let file_results: Vec<FileResult> = files
         .par_iter()
         .filter_map(|(path, source)| process_file(path, source))
         .collect();
-    timing::log_with_count(
-        "  process files (parallel)",
-        start.elapsed(),
-        file_results.len(),
-    );
 
     // Merge results by ecosystem
-    let start = Instant::now();
     let mut symbols_by_ecosystem: HashMap<crate::languages::Ecosystem, EcosystemSymbols> =
         HashMap::new();
 
@@ -151,13 +140,7 @@ where
         entry.references.extend(result.references);
         entry.definition_lines.extend(result.definition_lines);
     }
-    timing::log_with_count(
-        "  merge results",
-        start.elapsed(),
-        symbols_by_ecosystem.len(),
-    );
 
-    let start = Instant::now();
     let mut edges = Vec::new();
     let mut definition_lines = HashMap::new();
     for (ecosystem, symbols) in &symbols_by_ecosystem {
@@ -181,7 +164,6 @@ where
                 .or_insert_with(|| line.clone());
         }
     }
-    timing::log_with_count("  build_edges (parallel)", start.elapsed(), edges.len());
 
     Ok(ReferenceScan {
         edges,
@@ -194,21 +176,13 @@ pub fn find_references_cached(
     paths: Vec<PathBuf>,
     cache: &FileCache,
 ) -> Result<ReferenceScan, crate::io::CruxlinesError> {
-    let start = Instant::now();
-
     // Process files in parallel - check cache first, parse on miss
     let file_results: Vec<FileResult> = paths
         .par_iter()
         .filter_map(|path| process_file_cached(path, cache))
         .collect();
-    timing::log_with_count(
-        "  process files (cached)",
-        start.elapsed(),
-        file_results.len(),
-    );
 
     // Rest is same as find_references
-    let start = Instant::now();
     let mut symbols_by_ecosystem: HashMap<crate::languages::Ecosystem, EcosystemSymbols> =
         HashMap::new();
 
@@ -232,13 +206,7 @@ pub fn find_references_cached(
         entry.references.extend(result.references);
         entry.definition_lines.extend(result.definition_lines);
     }
-    timing::log_with_count(
-        "  merge results",
-        start.elapsed(),
-        symbols_by_ecosystem.len(),
-    );
 
-    let start = Instant::now();
     let mut edges = Vec::new();
     let mut definition_lines = HashMap::new();
     for (ecosystem, symbols) in &symbols_by_ecosystem {
@@ -262,7 +230,6 @@ pub fn find_references_cached(
                 .or_insert_with(|| line.clone());
         }
     }
-    timing::log_with_count("  build_edges (parallel)", start.elapsed(), edges.len());
 
     Ok(ReferenceScan {
         edges,
@@ -271,7 +238,7 @@ pub fn find_references_cached(
 }
 
 /// Process a file with cache support - returns cached result or parses fresh
-fn process_file_cached(path: &PathBuf, cache: &FileCache) -> Option<FileResult> {
+fn process_file_cached(path: &Path, cache: &FileCache) -> Option<FileResult> {
     // Try cache first
     if let Some(cached) = cache.get(path) {
         return Some(FileResult {

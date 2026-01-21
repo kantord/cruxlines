@@ -5,7 +5,6 @@ mod graph;
 pub mod intern;
 mod io;
 mod languages;
-pub mod timing;
 
 pub use analysis::{OutputRow, cruxlines, cruxlines_from_inputs};
 pub use find_references::Location;

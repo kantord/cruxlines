@@ -130,8 +130,8 @@ impl FileCache {
             definition_lines: definition_lines_ser,
         };
 
-        let bytes =
-            bincode::serde::encode_to_vec(&cached, bincode::config::standard()).map_err(io::Error::other)?;
+        let bytes = bincode::serde::encode_to_vec(&cached, bincode::config::standard())
+            .map_err(io::Error::other)?;
 
         // Ensure cache directory exists
         fs::create_dir_all(&self.cache_dir)?;
