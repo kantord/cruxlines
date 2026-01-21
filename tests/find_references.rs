@@ -11,17 +11,17 @@ fn read_fixture(path: impl AsRef<Path>) -> (PathBuf, String) {
 
 fn has_reference(rows: &[OutputRow], def_name: &str, def_path_ends: &str, use_path_ends: &str) -> bool {
     rows.iter().any(|row| {
-        row.definition.name == def_name
-            && row.definition.path.ends_with(def_path_ends)
+        row.definition.name_str() == def_name
+            && row.definition.path_str().ends_with(def_path_ends)
             && row
                 .references
                 .iter()
-                .any(|reference| reference.path.ends_with(use_path_ends))
+                .any(|reference| reference.path_str().ends_with(use_path_ends))
     })
 }
 
-fn extension(path: &Path) -> Option<String> {
-    path.extension().and_then(|ext| ext.to_str()).map(|ext| ext.to_string())
+fn extension(path: &str) -> Option<String> {
+    Path::new(path).extension().and_then(|ext| ext.to_str()).map(|ext| ext.to_string())
 }
 
 #[test]
@@ -156,12 +156,12 @@ fn kotlin_references_are_not_duplicated() {
     let rows = cruxlines_from_inputs(files, None);
     let add_row = rows
         .iter()
-        .find(|row| row.definition.name == "add")
+        .find(|row| row.definition.name_str() == "add")
         .expect("expected add definition");
     let ref_count = add_row
         .references
         .iter()
-        .filter(|reference| reference.path.ends_with("main.kt"))
+        .filter(|reference| reference.path_str().ends_with("main.kt"))
         .count();
 
     assert_eq!(
@@ -263,13 +263,13 @@ fn does_not_cross_language_references() {
 
     let rows = cruxlines_from_inputs(files, None);
     for row in &rows {
-        let def_ext = extension(&row.definition.path);
+        let def_ext = extension(row.definition.path_str());
         for reference in &row.references {
-            let ref_ext = extension(&reference.path);
+            let ref_ext = extension(reference.path_str());
             assert_eq!(
                 def_ext, ref_ext,
                 "expected references to stay within language, got {:?} -> {:?}",
-                row.definition.path, reference.path
+                row.definition.path_str(), reference.path_str()
             );
         }
     }
@@ -290,7 +290,7 @@ fn ignores_non_exported_javascript_definitions() {
 
     let rows = cruxlines_from_inputs(files, None);
     assert!(
-        !rows.iter().any(|row| row.definition.name == "foo"),
+        !rows.iter().any(|row| row.definition.name_str() == "foo"),
         "expected non-exported foo to be ignored"
     );
 }
@@ -304,7 +304,7 @@ fn ignores_nested_python_definitions() {
 
     let rows = cruxlines_from_inputs(files, None);
     assert!(
-        !rows.iter().any(|row| row.definition.name == "inner"),
+        !rows.iter().any(|row| row.definition.name_str() == "inner"),
         "expected nested inner to be ignored"
     );
 }

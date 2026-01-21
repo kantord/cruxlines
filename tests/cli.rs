@@ -152,7 +152,7 @@ fn library_cruxlines_scans_repo_root() {
     let ecosystems = std::collections::HashSet::from([cruxlines::Ecosystem::Python]);
     let rows = cruxlines::cruxlines(&dir, &ecosystems).expect("cruxlines");
     assert!(
-        rows.iter().any(|row| row.definition.name == "add"),
+        rows.iter().any(|row| row.definition.name_str() == "add"),
         "expected add definition from repo scan"
     );
 

@@ -2,12 +2,14 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Instant;
 
+use lasso::Spur;
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 
 use crate::cache::FileCache;
 use crate::find_references::{find_references, find_references_cached, Location, ReferenceEdge, ReferenceScan};
 use crate::graph::build_file_graph;
+use crate::intern::intern;
 use crate::languages::Ecosystem;
 use crate::io::{gather_paths, CruxlinesError};
 use crate::timing;
@@ -57,9 +59,9 @@ pub fn cruxlines_from_inputs(
     for grouped in grouped_by_ecosystem.into_values() {
         let file_ranks = rank_files(&grouped);
 
-        let mut name_counts: FxHashMap<String, usize> = FxHashMap::default();
+        let mut name_counts: FxHashMap<Spur, usize> = FxHashMap::default();
         for definition in grouped.keys() {
-            *name_counts.entry(definition.name.clone()).or_default() += 1;
+            *name_counts.entry(definition.name).or_default() += 1;
         }
 
         output_rows.extend(build_rows(
@@ -77,16 +79,16 @@ pub fn cruxlines_from_inputs(
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| {
                 let key_a = (
-                    &a.definition.path,
+                    a.definition.path,
                     a.definition.line,
                     a.definition.column,
-                    &a.definition.name,
+                    a.definition.name,
                 );
                 let key_b = (
-                    &b.definition.path,
+                    b.definition.path,
                     b.definition.line,
                     b.definition.column,
-                    &b.definition.name,
+                    b.definition.name,
                 );
                 key_a.cmp(&key_b)
             })
@@ -120,9 +122,9 @@ pub fn cruxlines_from_paths(
         let file_ranks = rank_files(&grouped);
         timing::log_with_count(&format!("rank_files ({:?})", ecosystem), start.elapsed(), file_ranks.len());
 
-        let mut name_counts: FxHashMap<String, usize> = FxHashMap::default();
+        let mut name_counts: FxHashMap<Spur, usize> = FxHashMap::default();
         for definition in grouped.keys() {
-            *name_counts.entry(definition.name.clone()).or_default() += 1;
+            *name_counts.entry(definition.name).or_default() += 1;
         }
 
         let start = Instant::now();
@@ -144,16 +146,16 @@ pub fn cruxlines_from_paths(
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| {
                 let key_a = (
-                    &a.definition.path,
+                    a.definition.path,
                     a.definition.line,
                     a.definition.column,
-                    &a.definition.name,
+                    a.definition.name,
                 );
                 let key_b = (
-                    &b.definition.path,
+                    b.definition.path,
                     b.definition.line,
                     b.definition.column,
-                    &b.definition.name,
+                    b.definition.name,
                 );
                 key_a.cmp(&key_b)
             })
@@ -163,7 +165,7 @@ pub fn cruxlines_from_paths(
     Ok(output_rows)
 }
 
-fn rank_files(grouped: &HashMap<Location, Vec<Location>>) -> FxHashMap<PathBuf, f64> {
+fn rank_files(grouped: &HashMap<Location, Vec<Location>>) -> FxHashMap<Spur, f64> {
     let start = Instant::now();
     let (graph, indices) = build_file_graph(grouped);
     timing::log_with_count("    build_file_graph", start.elapsed(), graph.edge_count());
@@ -192,7 +194,7 @@ fn rank_files(grouped: &HashMap<Location, Vec<Location>>) -> FxHashMap<PathBuf, 
 fn compute_edges_and_frecency(
     inputs: impl IntoIterator<Item = Result<(PathBuf, String), CruxlinesError>>,
     repo_root: Option<PathBuf>,
-) -> Result<(ReferenceScan, HashMap<PathBuf, f64>), CruxlinesError> {
+) -> Result<(ReferenceScan, HashMap<Spur, f64>), CruxlinesError> {
     let frecency_start = Instant::now();
     let frecency_handle = std::thread::spawn(move || {
         let result = frecency_scores(repo_root.as_deref());
@@ -217,7 +219,7 @@ fn compute_edges_and_frecency(
 fn compute_edges_and_frecency_cached(
     paths: Vec<PathBuf>,
     repo_root: &PathBuf,
-) -> Result<(ReferenceScan, HashMap<PathBuf, f64>), CruxlinesError> {
+) -> Result<(ReferenceScan, HashMap<Spur, f64>), CruxlinesError> {
     let cache = FileCache::new(repo_root);
 
     let frecency_start = Instant::now();
@@ -244,17 +246,17 @@ fn compute_edges_and_frecency_cached(
 
 fn build_rows(
     grouped: HashMap<Location, Vec<Location>>,
-    file_ranks: &FxHashMap<PathBuf, f64>,
-    frecency: &HashMap<PathBuf, f64>,
-    name_counts: &FxHashMap<String, usize>,
+    file_ranks: &FxHashMap<Spur, f64>,
+    frecency: &HashMap<Spur, f64>,
+    name_counts: &FxHashMap<Spur, usize>,
     definition_lines: &HashMap<Location, String>,
 ) -> Vec<OutputRow> {
     grouped
         .into_par_iter()
         .map(|(definition, mut references)| {
             references.sort_by(|a, b| {
-                let key_a = (&a.path, a.line, a.column, &a.name);
-                let key_b = (&b.path, b.line, b.column, &b.name);
+                let key_a = (a.path, a.line, a.column, a.name);
+                let key_b = (b.path, b.line, b.column, b.name);
                 key_a.cmp(&key_b)
             });
             let name_count = name_counts
@@ -311,7 +313,7 @@ fn group_edges_by_ecosystem(
     grouped_by_ecosystem
 }
 
-fn frecency_scores(repo_root: Option<&std::path::Path>) -> HashMap<PathBuf, f64> {
+fn frecency_scores(repo_root: Option<&std::path::Path>) -> HashMap<Spur, f64> {
     let Some(repo_root) = repo_root else {
         return HashMap::new();
     };
@@ -323,7 +325,8 @@ fn frecency_scores(repo_root: Option<&std::path::Path>) -> HashMap<PathBuf, f64>
     };
     let mut out = HashMap::new();
     for (path, score) in scores {
-        out.insert(repo_root.join(path), score);
+        let full_path = repo_root.join(path);
+        out.insert(intern(&full_path.to_string_lossy()), score);
     }
     out
 }
@@ -346,6 +349,7 @@ fn read_input(path: PathBuf) -> Option<Result<(PathBuf, String), CruxlinesError>
 mod tests {
     use super::{cruxlines_from_inputs, group_edges_by_ecosystem};
     use crate::find_references::{Location, ReferenceEdge};
+    use crate::intern::intern;
     use crate::languages::Ecosystem;
     use std::path::PathBuf;
 
@@ -367,7 +371,7 @@ mod tests {
         ];
         let rows = cruxlines_from_inputs(files, None);
         assert!(!rows.is_empty());
-        assert!(rows.iter().any(|row| row.definition.name == "add"));
+        assert!(rows.iter().any(|row| row.definition.name_str() == "add"));
     }
 
     #[test]
@@ -385,12 +389,12 @@ mod tests {
         let rows = cruxlines_from_inputs(inputs, None);
         let foo_scores: Vec<f64> = rows
             .iter()
-            .filter(|row| row.definition.name == "foo")
+            .filter(|row| row.definition.name_str() == "foo")
             .map(|row| row.rank)
             .collect();
         let bar_score = rows
             .iter()
-            .find(|row| row.definition.name == "bar")
+            .find(|row| row.definition.name_str() == "bar")
             .map(|row| row.rank)
             .unwrap_or(0.0);
         assert_eq!(foo_scores.len(), 2);
@@ -418,12 +422,12 @@ mod tests {
         let rows = cruxlines_from_inputs(inputs, None);
         let a_score = rows
             .iter()
-            .find(|row| row.definition.path.ends_with("a.py"))
+            .find(|row| row.definition.path_str().ends_with("a.py"))
             .map(|row| row.rank)
             .unwrap_or(0.0);
         let b_score = rows
             .iter()
-            .find(|row| row.definition.path.ends_with("b.py"))
+            .find(|row| row.definition.path_str().ends_with("b.py"))
             .map(|row| row.rank)
             .unwrap_or(0.0);
         assert!(a_score > 0.0);
@@ -434,16 +438,16 @@ mod tests {
     fn groups_edges_without_extension_by_ecosystem() {
         let edge = ReferenceEdge {
             definition: Location {
-                path: PathBuf::from("defs/alpha"),
+                path: intern("defs/alpha"),
                 line: 1,
                 column: 1,
-                name: "alpha".to_string(),
+                name: intern("alpha"),
             },
             usage: Location {
-                path: PathBuf::from("use"),
+                path: intern("use"),
                 line: 2,
                 column: 1,
-                name: "alpha".to_string(),
+                name: intern("alpha"),
             },
             ecosystem: Ecosystem::Python,
         };
