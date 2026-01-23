@@ -2,6 +2,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+pub(crate) mod csharp;
 pub(crate) mod go;
 pub(crate) mod java;
 pub(crate) mod javascript;
@@ -11,6 +12,7 @@ pub(crate) mod rust;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Language {
+    CSharp,
     Go,
     Java,
     Kotlin,
@@ -23,6 +25,7 @@ pub enum Language {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Ecosystem {
+    Dotnet,
     Go,
     Java,
     Python,
@@ -32,6 +35,9 @@ pub enum Ecosystem {
 
 pub(crate) fn language_for_path(path: &Path) -> Option<Language> {
     let ext = path.extension().and_then(|ext| ext.to_str())?;
+    if csharp::EXTENSIONS.contains(&ext) {
+        return Some(Language::CSharp);
+    }
     if go::EXTENSIONS.contains(&ext) {
         return Some(Language::Go);
     }
@@ -61,6 +67,7 @@ pub(crate) fn language_for_path(path: &Path) -> Option<Language> {
 
 pub(crate) fn ecosystem_for_language(language: Language) -> Ecosystem {
     match language {
+        Language::CSharp => Ecosystem::Dotnet,
         Language::Go => Ecosystem::Go,
         Language::Java | Language::Kotlin => Ecosystem::Java,
         Language::Python => Ecosystem::Python,
@@ -73,6 +80,7 @@ pub(crate) fn ecosystem_for_language(language: Language) -> Ecosystem {
 
 pub(crate) fn tree_sitter_language(language: Language) -> tree_sitter::Language {
     match language {
+        Language::CSharp => csharp::language(),
         Language::Go => go::language(),
         Language::Java => java::language(),
         Language::Kotlin => kotlin::language(),
@@ -147,6 +155,12 @@ mod tests {
     fn recognizes_go_extension() {
         let lang = language_for_path(&PathBuf::from("file.go"));
         assert_eq!(lang, Some(Language::Go));
+    }
+
+    #[test]
+    fn recognizes_csharp_extension() {
+        let lang = language_for_path(&PathBuf::from("file.cs"));
+        assert_eq!(lang, Some(Language::CSharp));
     }
 
     #[test]

@@ -690,3 +690,261 @@ fn finds_go_multiple_type_in_block() {
         "expected reference to Size from type block"
     );
 }
+
+#[test]
+fn finds_csharp_cross_file_references() {
+    let files = vec![
+        read_fixture("src/languages/csharp/fixtures/Program.cs"),
+        read_fixture("src/languages/csharp/fixtures/Models.cs"),
+        read_fixture("src/languages/csharp/fixtures/Services.cs"),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    // Classes
+    assert!(
+        has_reference(
+            &rows,
+            "User",
+            "src/languages/csharp/fixtures/Models.cs",
+            "src/languages/csharp/fixtures/Program.cs"
+        ),
+        "expected reference to User class from Program.cs"
+    );
+    assert!(
+        has_reference(
+            &rows,
+            "Calculator",
+            "src/languages/csharp/fixtures/Services.cs",
+            "src/languages/csharp/fixtures/Program.cs"
+        ),
+        "expected reference to Calculator class from Program.cs"
+    );
+
+    // Enum
+    assert!(
+        has_reference(
+            &rows,
+            "OrderStatus",
+            "src/languages/csharp/fixtures/Models.cs",
+            "src/languages/csharp/fixtures/Program.cs"
+        ),
+        "expected reference to OrderStatus enum from Program.cs"
+    );
+
+    // Interface
+    assert!(
+        has_reference(
+            &rows,
+            "IRepository",
+            "src/languages/csharp/fixtures/Models.cs",
+            "src/languages/csharp/fixtures/Program.cs"
+        ),
+        "expected reference to IRepository interface from Program.cs"
+    );
+
+    // Implementation references interface
+    assert!(
+        has_reference(
+            &rows,
+            "IRepository",
+            "src/languages/csharp/fixtures/Models.cs",
+            "src/languages/csharp/fixtures/Services.cs"
+        ),
+        "expected reference to IRepository from Services.cs"
+    );
+}
+
+#[test]
+fn finds_csharp_interface_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("Interfaces.cs"),
+            "public interface IRepository {\n    void Save();\n}\n\npublic interface IService {\n    void Execute();\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("Implementation.cs"),
+            "public class MyRepo : IRepository {\n    public void Save() { }\n}\n\npublic class MyService : IService {\n    public void Execute() { }\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "IRepository", "Interfaces.cs", "Implementation.cs"),
+        "expected reference to IRepository interface"
+    );
+    assert!(
+        has_reference(&rows, "IService", "Interfaces.cs", "Implementation.cs"),
+        "expected reference to IService interface"
+    );
+}
+
+#[test]
+fn finds_csharp_struct_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("Structs.cs"),
+            "public struct Point {\n    public int X;\n    public int Y;\n}\n\npublic struct Size {\n    public int Width;\n    public int Height;\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("Usage.cs"),
+            "public class Canvas {\n    public Point Origin;\n    public Size Dimensions;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Point", "Structs.cs", "Usage.cs"),
+        "expected reference to Point struct"
+    );
+    assert!(
+        has_reference(&rows, "Size", "Structs.cs", "Usage.cs"),
+        "expected reference to Size struct"
+    );
+}
+
+#[test]
+fn finds_csharp_enum_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("Enums.cs"),
+            "public enum Status {\n    Active,\n    Inactive,\n    Pending\n}\n\npublic enum Priority {\n    Low,\n    Medium,\n    High\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("Task.cs"),
+            "public class Task {\n    public Status CurrentStatus { get; set; }\n    public Priority TaskPriority { get; set; }\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Status", "Enums.cs", "Task.cs"),
+        "expected reference to Status enum"
+    );
+    assert!(
+        has_reference(&rows, "Priority", "Enums.cs", "Task.cs"),
+        "expected reference to Priority enum"
+    );
+}
+
+#[test]
+fn finds_csharp_record_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("Records.cs"),
+            "public record Person(string Name, int Age);\n\npublic record Address(string Street, string City);\n".to_string(),
+        ),
+        (
+            PathBuf::from("Usage.cs"),
+            "public class Registry {\n    public Person Owner { get; set; }\n    public Address Location { get; set; }\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Person", "Records.cs", "Usage.cs"),
+        "expected reference to Person record"
+    );
+    assert!(
+        has_reference(&rows, "Address", "Records.cs", "Usage.cs"),
+        "expected reference to Address record"
+    );
+}
+
+#[test]
+fn finds_csharp_delegate_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("Delegates.cs"),
+            "public delegate void EventHandler(object sender);\n\npublic delegate int Calculator(int a, int b);\n".to_string(),
+        ),
+        (
+            PathBuf::from("Usage.cs"),
+            "public class Button {\n    public EventHandler OnClick;\n    public Calculator Compute;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "EventHandler", "Delegates.cs", "Usage.cs"),
+        "expected reference to EventHandler delegate"
+    );
+    assert!(
+        has_reference(&rows, "Calculator", "Delegates.cs", "Usage.cs"),
+        "expected reference to Calculator delegate"
+    );
+}
+
+#[test]
+fn finds_csharp_types_in_namespace() {
+    let files = vec![
+        (
+            PathBuf::from("Models.cs"),
+            "namespace MyApp.Models {\n    public class Customer {\n        public string Name { get; set; }\n    }\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("Service.cs"),
+            "namespace MyApp.Services {\n    public class CustomerService {\n        public Customer GetCustomer() { return null; }\n    }\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Customer", "Models.cs", "Service.cs"),
+        "expected reference to Customer class inside namespace"
+    );
+}
+
+#[test]
+fn finds_csharp_generic_type_references() {
+    let files = vec![
+        (
+            PathBuf::from("Generic.cs"),
+            "public class Repository<T> {\n    public T Get(int id) { return default; }\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("Usage.cs"),
+            "public class UserService {\n    private Repository<User> repo;\n}\n\npublic class User { }\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Repository", "Generic.cs", "Usage.cs"),
+        "expected reference to generic Repository class"
+    );
+}
+
+#[test]
+fn ignores_csharp_nested_class_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("Outer.cs"),
+            "public class Outer {\n    private class Inner {\n        public int Value;\n    }\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("Usage.cs"),
+            "public class Test {\n    public Outer outer;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    // Outer should be a definition
+    assert!(
+        has_reference(&rows, "Outer", "Outer.cs", "Usage.cs"),
+        "expected Outer to be a definition"
+    );
+    // Inner should NOT be a top-level definition
+    assert!(
+        !rows.iter().any(|row| row.definition.name_str() == "Inner"),
+        "expected nested Inner class to not be a top-level definition"
+    );
+}

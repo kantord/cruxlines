@@ -281,6 +281,11 @@ fn collect_definitions(
         };
 
     match language {
+        crate::languages::Language::CSharp => {
+            crate::languages::csharp::emit_definitions(path, source, tree, |loc| {
+                emit_def(loc, &mut definitions, &mut definition_lines);
+            });
+        }
         crate::languages::Language::Go => {
             crate::languages::go::emit_definitions(path, source, tree, |loc| {
                 emit_def(loc, &mut definitions, &mut definition_lines);
@@ -328,6 +333,11 @@ fn process_file(path: &Path, source: &str) -> Option<FileResult> {
 
     let mut references = Vec::new();
     match language {
+        crate::languages::Language::CSharp => {
+            crate::languages::csharp::emit_references(path, source, &tree, |loc| {
+                references.push(loc);
+            });
+        }
         crate::languages::Language::Go => {
             crate::languages::go::emit_references(path, source, &tree, |loc| {
                 references.push(loc);
