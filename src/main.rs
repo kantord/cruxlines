@@ -15,6 +15,8 @@ struct Cli {
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
 enum EcosystemArg {
+    #[value(name = "go")]
+    Go,
     #[value(name = "java", alias = "jvm")]
     Java,
     #[value(name = "python", alias = "py")]
@@ -107,6 +109,7 @@ fn report_error(err: CruxlinesError) {
 fn selected_ecosystems(values: &[EcosystemArg]) -> std::collections::HashSet<Ecosystem> {
     let mut ecosystems = std::collections::HashSet::new();
     if values.is_empty() {
+        ecosystems.insert(Ecosystem::Go);
         ecosystems.insert(Ecosystem::Java);
         ecosystems.insert(Ecosystem::Python);
         ecosystems.insert(Ecosystem::JavaScript);
@@ -115,6 +118,7 @@ fn selected_ecosystems(values: &[EcosystemArg]) -> std::collections::HashSet<Eco
     }
     for value in values {
         let ecosystem = match value {
+            EcosystemArg::Go => Ecosystem::Go,
             EcosystemArg::Java => Ecosystem::Java,
             EcosystemArg::Python => Ecosystem::Python,
             EcosystemArg::JavaScript => Ecosystem::JavaScript,

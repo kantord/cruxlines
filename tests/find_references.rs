@@ -439,3 +439,254 @@ fn ties_are_sorted_by_definition_location() {
         "expected tie-breaker ordering by definition location"
     );
 }
+
+#[test]
+fn finds_go_cross_file_references() {
+    let files = vec![
+        read_fixture("src/languages/go/fixtures/main.go"),
+        read_fixture("src/languages/go/fixtures/utils.go"),
+        read_fixture("src/languages/go/fixtures/models.go"),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(
+            &rows,
+            "Add",
+            "src/languages/go/fixtures/utils.go",
+            "src/languages/go/fixtures/main.go"
+        ),
+        "expected reference to utils.Add from main.go"
+    );
+    assert!(
+        has_reference(
+            &rows,
+            "User",
+            "src/languages/go/fixtures/models.go",
+            "src/languages/go/fixtures/main.go"
+        ),
+        "expected reference to models.User from main.go"
+    );
+    assert!(
+        has_reference(
+            &rows,
+            "NewUser",
+            "src/languages/go/fixtures/models.go",
+            "src/languages/go/fixtures/main.go"
+        ),
+        "expected reference to models.NewUser from main.go"
+    );
+}
+
+#[test]
+fn finds_go_constant_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("constants.go"),
+            "package main\n\nconst MaxRetries = 3\nconst DefaultTimeout = 30\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.go"),
+            "package main\n\nfunc main() {\n\tretries := MaxRetries\n\ttimeout := DefaultTimeout\n\t_ = retries + timeout\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "MaxRetries", "constants.go", "main.go"),
+        "expected reference to MaxRetries constant from main.go"
+    );
+    assert!(
+        has_reference(&rows, "DefaultTimeout", "constants.go", "main.go"),
+        "expected reference to DefaultTimeout constant from main.go"
+    );
+}
+
+#[test]
+fn finds_go_variable_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("globals.go"),
+            "package main\n\nvar GlobalCounter int\nvar AppName = \"myapp\"\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.go"),
+            "package main\n\nfunc main() {\n\tGlobalCounter++\n\tprintln(AppName)\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "GlobalCounter", "globals.go", "main.go"),
+        "expected reference to GlobalCounter variable from main.go"
+    );
+    assert!(
+        has_reference(&rows, "AppName", "globals.go", "main.go"),
+        "expected reference to AppName variable from main.go"
+    );
+}
+
+#[test]
+fn finds_go_method_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("user.go"),
+            "package main\n\ntype User struct {\n\tName string\n}\n\nfunc (u *User) Greet() string {\n\treturn \"Hello, \" + u.Name\n}\n\nfunc (u User) GetName() string {\n\treturn u.Name\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.go"),
+            "package main\n\nfunc main() {\n\tu := &User{Name: \"Alice\"}\n\tprintln(u.Greet())\n\tprintln(u.GetName())\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Greet", "user.go", "main.go"),
+        "expected reference to Greet method from main.go"
+    );
+    assert!(
+        has_reference(&rows, "GetName", "user.go", "main.go"),
+        "expected reference to GetName method from main.go"
+    );
+}
+
+#[test]
+fn finds_go_type_identifier_references() {
+    let files = vec![
+        (
+            PathBuf::from("types.go"),
+            "package main\n\ntype Config struct {\n\tHost string\n\tPort int\n}\n\ntype Handler interface {\n\tHandle()\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.go"),
+            "package main\n\nfunc NewConfig() *Config {\n\treturn &Config{}\n}\n\nfunc process(h Handler) {\n\th.Handle()\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Config", "types.go", "main.go"),
+        "expected reference to Config type from main.go"
+    );
+    assert!(
+        has_reference(&rows, "Handler", "types.go", "main.go"),
+        "expected reference to Handler interface from main.go"
+    );
+}
+
+#[test]
+fn ignores_go_nested_function_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("funcs.go"),
+            "package main\n\nfunc outer() {\n\tinner := func() int {\n\t\treturn 1\n\t}\n\t_ = inner()\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.go"),
+            // Reference both outer and inner to test which appears as definition
+            "package main\n\nfunc main() {\n\touter()\n\t// inner would be referenced here if it were exported\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    // outer is a top-level function and should be a definition
+    assert!(
+        has_reference(&rows, "outer", "funcs.go", "main.go"),
+        "expected outer function to be a definition with reference from main.go"
+    );
+    // inner is a local variable holding a closure, not a top-level definition
+    // It should not appear as a definition at all
+    assert!(
+        !rows.iter().any(|row| row.definition.name_str() == "inner"),
+        "expected nested closure variable to not be a top-level definition"
+    );
+}
+
+#[test]
+fn finds_go_multiple_const_in_block() {
+    let files = vec![
+        (
+            PathBuf::from("constants.go"),
+            "package main\n\nconst (\n\tFoo = 1\n\tBar = 2\n\tBaz = 3\n)\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.go"),
+            "package main\n\nfunc main() {\n\t_ = Foo + Bar + Baz\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Foo", "constants.go", "main.go"),
+        "expected reference to Foo from const block"
+    );
+    assert!(
+        has_reference(&rows, "Bar", "constants.go", "main.go"),
+        "expected reference to Bar from const block"
+    );
+    assert!(
+        has_reference(&rows, "Baz", "constants.go", "main.go"),
+        "expected reference to Baz from const block"
+    );
+}
+
+#[test]
+fn finds_go_multiple_var_in_block() {
+    let files = vec![
+        (
+            PathBuf::from("globals.go"),
+            "package main\n\nvar (\n\tX int\n\tY int\n\tZ = 100\n)\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.go"),
+            "package main\n\nfunc main() {\n\t_ = X + Y + Z\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "X", "globals.go", "main.go"),
+        "expected reference to X from var block"
+    );
+    assert!(
+        has_reference(&rows, "Y", "globals.go", "main.go"),
+        "expected reference to Y from var block"
+    );
+    assert!(
+        has_reference(&rows, "Z", "globals.go", "main.go"),
+        "expected reference to Z from var block"
+    );
+}
+
+#[test]
+fn finds_go_multiple_type_in_block() {
+    let files = vec![
+        (
+            PathBuf::from("types.go"),
+            "package main\n\ntype (\n\tPoint struct{ X, Y int }\n\tSize struct{ W, H int }\n)\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.go"),
+            "package main\n\nfunc main() {\n\tp := Point{X: 1, Y: 2}\n\ts := Size{W: 10, H: 20}\n\t_ = p\n\t_ = s\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Point", "types.go", "main.go"),
+        "expected reference to Point from type block"
+    );
+    assert!(
+        has_reference(&rows, "Size", "types.go", "main.go"),
+        "expected reference to Size from type block"
+    );
+}

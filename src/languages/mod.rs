@@ -2,6 +2,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+pub(crate) mod go;
 pub(crate) mod java;
 pub(crate) mod javascript;
 pub(crate) mod kotlin;
@@ -10,6 +11,7 @@ pub(crate) mod rust;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Language {
+    Go,
     Java,
     Kotlin,
     Python,
@@ -21,6 +23,7 @@ pub enum Language {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Ecosystem {
+    Go,
     Java,
     Python,
     JavaScript,
@@ -29,6 +32,9 @@ pub enum Ecosystem {
 
 pub(crate) fn language_for_path(path: &Path) -> Option<Language> {
     let ext = path.extension().and_then(|ext| ext.to_str())?;
+    if go::EXTENSIONS.contains(&ext) {
+        return Some(Language::Go);
+    }
     if java::EXTENSIONS.contains(&ext) {
         return Some(Language::Java);
     }
@@ -55,6 +61,7 @@ pub(crate) fn language_for_path(path: &Path) -> Option<Language> {
 
 pub(crate) fn ecosystem_for_language(language: Language) -> Ecosystem {
     match language {
+        Language::Go => Ecosystem::Go,
         Language::Java | Language::Kotlin => Ecosystem::Java,
         Language::Python => Ecosystem::Python,
         Language::JavaScript | Language::TypeScript | Language::TypeScriptReact => {
@@ -66,6 +73,7 @@ pub(crate) fn ecosystem_for_language(language: Language) -> Ecosystem {
 
 pub(crate) fn tree_sitter_language(language: Language) -> tree_sitter::Language {
     match language {
+        Language::Go => go::language(),
         Language::Java => java::language(),
         Language::Kotlin => kotlin::language(),
         Language::Python => python::language(),
@@ -133,6 +141,12 @@ mod tests {
     fn recognizes_kotlin_script_extension() {
         let lang = language_for_path(&PathBuf::from("file.kts"));
         assert_eq!(lang, Some(Language::Kotlin));
+    }
+
+    #[test]
+    fn recognizes_go_extension() {
+        let lang = language_for_path(&PathBuf::from("file.go"));
+        assert_eq!(lang, Some(Language::Go));
     }
 
     #[test]
