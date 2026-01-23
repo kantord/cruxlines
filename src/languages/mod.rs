@@ -2,6 +2,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+pub(crate) mod c;
+pub(crate) mod cpp;
 pub(crate) mod csharp;
 pub(crate) mod go;
 pub(crate) mod java;
@@ -13,6 +15,8 @@ pub(crate) mod rust;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Language {
+    C,
+    Cpp,
     CSharp,
     Go,
     Java,
@@ -27,6 +31,7 @@ pub enum Language {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Ecosystem {
+    C,
     Dotnet,
     Go,
     Java,
@@ -38,6 +43,12 @@ pub enum Ecosystem {
 
 pub(crate) fn language_for_path(path: &Path) -> Option<Language> {
     let ext = path.extension().and_then(|ext| ext.to_str())?;
+    if c::EXTENSIONS.contains(&ext) {
+        return Some(Language::C);
+    }
+    if cpp::EXTENSIONS.contains(&ext) {
+        return Some(Language::Cpp);
+    }
     if csharp::EXTENSIONS.contains(&ext) {
         return Some(Language::CSharp);
     }
@@ -73,6 +84,7 @@ pub(crate) fn language_for_path(path: &Path) -> Option<Language> {
 
 pub(crate) fn ecosystem_for_language(language: Language) -> Ecosystem {
     match language {
+        Language::C | Language::Cpp => Ecosystem::C,
         Language::CSharp => Ecosystem::Dotnet,
         Language::Go => Ecosystem::Go,
         Language::Java | Language::Kotlin => Ecosystem::Java,
@@ -87,6 +99,8 @@ pub(crate) fn ecosystem_for_language(language: Language) -> Ecosystem {
 
 pub(crate) fn tree_sitter_language(language: Language) -> tree_sitter::Language {
     match language {
+        Language::C => c::language(),
+        Language::Cpp => cpp::language(),
         Language::CSharp => csharp::language(),
         Language::Go => go::language(),
         Language::Java => java::language(),
@@ -181,5 +195,35 @@ mod tests {
     fn ignores_unknown_extensions() {
         let lang = language_for_path(&PathBuf::from("file.txt"));
         assert_eq!(lang, None);
+    }
+
+    #[test]
+    fn recognizes_c_extension() {
+        let lang = language_for_path(&PathBuf::from("file.c"));
+        assert_eq!(lang, Some(Language::C));
+    }
+
+    #[test]
+    fn recognizes_c_header_extension() {
+        let lang = language_for_path(&PathBuf::from("file.h"));
+        assert_eq!(lang, Some(Language::C));
+    }
+
+    #[test]
+    fn recognizes_cpp_extension() {
+        let lang = language_for_path(&PathBuf::from("file.cpp"));
+        assert_eq!(lang, Some(Language::Cpp));
+    }
+
+    #[test]
+    fn recognizes_cpp_cc_extension() {
+        let lang = language_for_path(&PathBuf::from("file.cc"));
+        assert_eq!(lang, Some(Language::Cpp));
+    }
+
+    #[test]
+    fn recognizes_cpp_header_extension() {
+        let lang = language_for_path(&PathBuf::from("file.hpp"));
+        assert_eq!(lang, Some(Language::Cpp));
     }
 }

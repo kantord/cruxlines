@@ -1157,3 +1157,469 @@ fn finds_php_types_in_namespace() {
         "expected reference to Customer class in namespace"
     );
 }
+
+// C Tests
+
+#[test]
+fn finds_c_cross_file_references() {
+    let files = vec![
+        read_fixture("src/languages/c/fixtures/main.c"),
+        read_fixture("src/languages/c/fixtures/types.h"),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    // Function references
+    assert!(
+        has_reference(
+            &rows,
+            "add",
+            "src/languages/c/fixtures/main.c",
+            "src/languages/c/fixtures/types.h"
+        ),
+        "expected reference to add function from types.h"
+    );
+    assert!(
+        has_reference(
+            &rows,
+            "create_point",
+            "src/languages/c/fixtures/main.c",
+            "src/languages/c/fixtures/types.h"
+        ),
+        "expected reference to create_point function from types.h"
+    );
+}
+
+#[test]
+fn finds_c_function_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("math.c"),
+            "int add(int a, int b) {\n    return a + b;\n}\n\nint multiply(int a, int b) {\n    return a * b;\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.c"),
+            "int main(void) {\n    int x = add(1, 2);\n    int y = multiply(3, 4);\n    return 0;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "add", "math.c", "main.c"),
+        "expected reference to add function"
+    );
+    assert!(
+        has_reference(&rows, "multiply", "math.c", "main.c"),
+        "expected reference to multiply function"
+    );
+}
+
+#[test]
+fn finds_c_struct_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("types.h"),
+            "struct Point {\n    int x;\n    int y;\n};\n\nstruct Rectangle {\n    struct Point origin;\n    int width;\n    int height;\n};\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.c"),
+            "#include \"types.h\"\nint main() {\n    struct Point p;\n    struct Rectangle r;\n    return 0;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Point", "types.h", "main.c"),
+        "expected reference to Point struct"
+    );
+    assert!(
+        has_reference(&rows, "Rectangle", "types.h", "main.c"),
+        "expected reference to Rectangle struct"
+    );
+}
+
+#[test]
+fn finds_c_enum_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("enums.h"),
+            "enum Color {\n    RED,\n    GREEN,\n    BLUE\n};\n\nenum Status {\n    PENDING,\n    ACTIVE,\n    DONE\n};\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.c"),
+            "#include \"enums.h\"\nint main() {\n    enum Color c = RED;\n    enum Status s = PENDING;\n    return 0;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Color", "enums.h", "main.c"),
+        "expected reference to Color enum"
+    );
+    assert!(
+        has_reference(&rows, "Status", "enums.h", "main.c"),
+        "expected reference to Status enum"
+    );
+}
+
+#[test]
+fn finds_c_typedef_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("types.h"),
+            "typedef struct {\n    int x;\n    int y;\n} Point;\n\ntypedef int (*Callback)(int);\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.c"),
+            "#include \"types.h\"\nint main() {\n    Point p;\n    Callback cb;\n    return 0;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Point", "types.h", "main.c"),
+        "expected reference to Point typedef"
+    );
+    assert!(
+        has_reference(&rows, "Callback", "types.h", "main.c"),
+        "expected reference to Callback typedef"
+    );
+}
+
+#[test]
+fn finds_c_union_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("types.h"),
+            "union Value {\n    int i;\n    float f;\n    char c;\n};\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.c"),
+            "#include \"types.h\"\nint main() {\n    union Value v;\n    v.i = 42;\n    return 0;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Value", "types.h", "main.c"),
+        "expected reference to Value union"
+    );
+}
+
+#[test]
+fn finds_c_global_variable_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("globals.c"),
+            "int counter = 0;\nchar* name = \"test\";\nconst int MAX_SIZE = 100;\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.c"),
+            "extern int counter;\nextern const int MAX_SIZE;\nint main() {\n    counter = MAX_SIZE;\n    return 0;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "counter", "globals.c", "main.c"),
+        "expected reference to counter global variable"
+    );
+    assert!(
+        has_reference(&rows, "MAX_SIZE", "globals.c", "main.c"),
+        "expected reference to MAX_SIZE global constant"
+    );
+}
+
+#[test]
+fn finds_c_multiple_declarators() {
+    let files = vec![
+        (
+            PathBuf::from("vars.c"),
+            "int width, height, depth;\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.c"),
+            "extern int width, height, depth;\nint main() {\n    int vol = width * height * depth;\n    return 0;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "width", "vars.c", "main.c"),
+        "expected reference to width"
+    );
+    assert!(
+        has_reference(&rows, "height", "vars.c", "main.c"),
+        "expected reference to height"
+    );
+    assert!(
+        has_reference(&rows, "depth", "vars.c", "main.c"),
+        "expected reference to depth"
+    );
+}
+
+// C++ Tests
+
+#[test]
+fn finds_cpp_cross_file_references() {
+    let files = vec![
+        read_fixture("src/languages/cpp/fixtures/main.cpp"),
+        read_fixture("src/languages/cpp/fixtures/types.hpp"),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    // Classes
+    assert!(
+        has_reference(
+            &rows,
+            "Point",
+            "src/languages/cpp/fixtures/types.hpp",
+            "src/languages/cpp/fixtures/main.cpp"
+        ),
+        "expected reference to Point class from main.cpp"
+    );
+    assert!(
+        has_reference(
+            &rows,
+            "Rectangle",
+            "src/languages/cpp/fixtures/types.hpp",
+            "src/languages/cpp/fixtures/main.cpp"
+        ),
+        "expected reference to Rectangle class from main.cpp"
+    );
+}
+
+#[test]
+fn finds_cpp_class_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("models.hpp"),
+            "class User {\npublic:\n    std::string name;\n};\n\nclass Order {\npublic:\n    int id;\n};\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.cpp"),
+            "#include \"models.hpp\"\nint main() {\n    User u;\n    Order o;\n    return 0;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "User", "models.hpp", "main.cpp"),
+        "expected reference to User class"
+    );
+    assert!(
+        has_reference(&rows, "Order", "models.hpp", "main.cpp"),
+        "expected reference to Order class"
+    );
+}
+
+#[test]
+fn finds_cpp_struct_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("types.hpp"),
+            "struct Point {\n    int x;\n    int y;\n};\n\nstruct Size {\n    int width;\n    int height;\n};\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.cpp"),
+            "#include \"types.hpp\"\nint main() {\n    Point p{0, 0};\n    Size s{10, 20};\n    return 0;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Point", "types.hpp", "main.cpp"),
+        "expected reference to Point struct"
+    );
+    assert!(
+        has_reference(&rows, "Size", "types.hpp", "main.cpp"),
+        "expected reference to Size struct"
+    );
+}
+
+#[test]
+fn finds_cpp_enum_class_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("enums.hpp"),
+            "enum class Color {\n    Red,\n    Green,\n    Blue\n};\n\nenum class Status {\n    Pending,\n    Active,\n    Done\n};\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.cpp"),
+            "#include \"enums.hpp\"\nint main() {\n    Color c = Color::Red;\n    Status s = Status::Active;\n    return 0;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Color", "enums.hpp", "main.cpp"),
+        "expected reference to Color enum class"
+    );
+    assert!(
+        has_reference(&rows, "Status", "enums.hpp", "main.cpp"),
+        "expected reference to Status enum class"
+    );
+}
+
+#[test]
+fn finds_cpp_functions_in_namespace() {
+    let files = vec![
+        (
+            PathBuf::from("math.cpp"),
+            "namespace math {\n\nint add(int a, int b) {\n    return a + b;\n}\n\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.cpp"),
+            "namespace math { int add(int, int); }\nint main() {\n    int x = add(1, 2);\n    return 0;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "add", "math.cpp", "main.cpp"),
+        "expected reference to add function in namespace"
+    );
+}
+
+#[test]
+fn finds_cpp_function_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("utils.cpp"),
+            "int add(int a, int b) {\n    return a + b;\n}\n\nint multiply(int a, int b) {\n    return a * b;\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.cpp"),
+            "#include \"utils.hpp\"\nint main() {\n    int x = add(1, 2);\n    int y = multiply(3, 4);\n    return 0;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "add", "utils.cpp", "main.cpp"),
+        "expected reference to add function"
+    );
+    assert!(
+        has_reference(&rows, "multiply", "utils.cpp", "main.cpp"),
+        "expected reference to multiply function"
+    );
+}
+
+#[test]
+fn finds_c_and_cpp_cross_language_references() {
+    // C and C++ should share the same ecosystem
+    let files = vec![
+        (
+            PathBuf::from("math.c"),
+            "int add(int a, int b) {\n    return a + b;\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.cpp"),
+            "extern \"C\" int add(int, int);\nint main() {\n    int x = add(1, 2);\n    return 0;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "add", "math.c", "main.cpp"),
+        "expected C function referenced from C++ file"
+    );
+}
+
+#[test]
+fn finds_cpp_inheritance_references() {
+    let files = vec![
+        (
+            PathBuf::from("base.hpp"),
+            "class Animal {\npublic:\n    virtual void speak() = 0;\n};\n\nclass Mammal : public Animal {\npublic:\n    void breathe() {}\n};\n".to_string(),
+        ),
+        (
+            PathBuf::from("derived.cpp"),
+            "#include \"base.hpp\"\nclass Dog : public Mammal {\npublic:\n    void speak() override {}\n};\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Mammal", "base.hpp", "derived.cpp"),
+        "expected reference to Mammal base class"
+    );
+}
+
+#[test]
+fn finds_cpp_nested_namespace_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("utils.cpp"),
+            "namespace company {\nnamespace project {\nnamespace utils {\n\nint helper(int x) {\n    return x * 2;\n}\n\n}\n}\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.cpp"),
+            "namespace company { namespace project { namespace utils { int helper(int); } } }\nint main() {\n    int x = helper(5);\n    return 0;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "helper", "utils.cpp", "main.cpp"),
+        "expected reference to helper in nested namespace"
+    );
+}
+
+#[test]
+fn finds_cpp_template_class_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("container.hpp"),
+            "template<typename T>\nclass Container {\npublic:\n    T value;\n    Container(T v) : value(v) {}\n};\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.cpp"),
+            "#include \"container.hpp\"\nint main() {\n    Container<int> c(42);\n    return 0;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Container", "container.hpp", "main.cpp"),
+        "expected reference to Container template class"
+    );
+}
+
+#[test]
+fn finds_cpp_template_function_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("algorithms.hpp"),
+            "template<typename T>\nT maximum(T a, T b) {\n    return (a > b) ? a : b;\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.cpp"),
+            "#include \"algorithms.hpp\"\nint main() {\n    int x = maximum(3, 5);\n    return 0;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "maximum", "algorithms.hpp", "main.cpp"),
+        "expected reference to maximum template function"
+    );
+}
