@@ -21,6 +21,8 @@ enum EcosystemArg {
     Go,
     #[value(name = "java", alias = "jvm")]
     Java,
+    #[value(name = "php")]
+    Php,
     #[value(name = "python", alias = "py")]
     Python,
     #[value(name = "javascript", alias = "js", alias = "ts", alias = "tsx")]
@@ -114,6 +116,7 @@ fn selected_ecosystems(values: &[EcosystemArg]) -> std::collections::HashSet<Eco
         ecosystems.insert(Ecosystem::Dotnet);
         ecosystems.insert(Ecosystem::Go);
         ecosystems.insert(Ecosystem::Java);
+        ecosystems.insert(Ecosystem::Php);
         ecosystems.insert(Ecosystem::Python);
         ecosystems.insert(Ecosystem::JavaScript);
         ecosystems.insert(Ecosystem::Rust);
@@ -124,6 +127,7 @@ fn selected_ecosystems(values: &[EcosystemArg]) -> std::collections::HashSet<Eco
             EcosystemArg::Dotnet => Ecosystem::Dotnet,
             EcosystemArg::Go => Ecosystem::Go,
             EcosystemArg::Java => Ecosystem::Java,
+            EcosystemArg::Php => Ecosystem::Php,
             EcosystemArg::Python => Ecosystem::Python,
             EcosystemArg::JavaScript => Ecosystem::JavaScript,
             EcosystemArg::Rust => Ecosystem::Rust,

@@ -301,6 +301,11 @@ fn collect_definitions(
                 emit_def(loc, &mut definitions, &mut definition_lines);
             });
         }
+        crate::languages::Language::Php => {
+            crate::languages::php::emit_definitions(path, source, tree, |loc| {
+                emit_def(loc, &mut definitions, &mut definition_lines);
+            });
+        }
         crate::languages::Language::Python => {
             crate::languages::python::emit_definitions(path, source, tree, |loc| {
                 emit_def(loc, &mut definitions, &mut definition_lines);
@@ -350,6 +355,11 @@ fn process_file(path: &Path, source: &str) -> Option<FileResult> {
         }
         crate::languages::Language::Kotlin => {
             crate::languages::kotlin::emit_references(path, source, &tree, |loc| {
+                references.push(loc);
+            });
+        }
+        crate::languages::Language::Php => {
+            crate::languages::php::emit_references(path, source, &tree, |loc| {
                 references.push(loc);
             });
         }

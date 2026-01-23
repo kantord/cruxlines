@@ -7,6 +7,7 @@ pub(crate) mod go;
 pub(crate) mod java;
 pub(crate) mod javascript;
 pub(crate) mod kotlin;
+pub(crate) mod php;
 pub(crate) mod python;
 pub(crate) mod rust;
 
@@ -16,6 +17,7 @@ pub enum Language {
     Go,
     Java,
     Kotlin,
+    Php,
     Python,
     JavaScript,
     TypeScript,
@@ -28,6 +30,7 @@ pub enum Ecosystem {
     Dotnet,
     Go,
     Java,
+    Php,
     Python,
     JavaScript,
     Rust,
@@ -46,6 +49,9 @@ pub(crate) fn language_for_path(path: &Path) -> Option<Language> {
     }
     if kotlin::EXTENSIONS.contains(&ext) {
         return Some(Language::Kotlin);
+    }
+    if php::EXTENSIONS.contains(&ext) {
+        return Some(Language::Php);
     }
     if python::EXTENSIONS.contains(&ext) {
         return Some(Language::Python);
@@ -70,6 +76,7 @@ pub(crate) fn ecosystem_for_language(language: Language) -> Ecosystem {
         Language::CSharp => Ecosystem::Dotnet,
         Language::Go => Ecosystem::Go,
         Language::Java | Language::Kotlin => Ecosystem::Java,
+        Language::Php => Ecosystem::Php,
         Language::Python => Ecosystem::Python,
         Language::JavaScript | Language::TypeScript | Language::TypeScriptReact => {
             Ecosystem::JavaScript
@@ -84,6 +91,7 @@ pub(crate) fn tree_sitter_language(language: Language) -> tree_sitter::Language 
         Language::Go => go::language(),
         Language::Java => java::language(),
         Language::Kotlin => kotlin::language(),
+        Language::Php => php::language(),
         Language::Python => python::language(),
         Language::JavaScript => javascript::language(),
         Language::TypeScript => javascript::language_typescript(),
@@ -161,6 +169,12 @@ mod tests {
     fn recognizes_csharp_extension() {
         let lang = language_for_path(&PathBuf::from("file.cs"));
         assert_eq!(lang, Some(Language::CSharp));
+    }
+
+    #[test]
+    fn recognizes_php_extension() {
+        let lang = language_for_path(&PathBuf::from("file.php"));
+        assert_eq!(lang, Some(Language::Php));
     }
 
     #[test]

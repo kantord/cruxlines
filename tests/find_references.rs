@@ -948,3 +948,212 @@ fn ignores_csharp_nested_class_definitions() {
         "expected nested Inner class to not be a top-level definition"
     );
 }
+
+#[test]
+fn finds_php_cross_file_references() {
+    let files = vec![
+        read_fixture("src/languages/php/fixtures/index.php"),
+        read_fixture("src/languages/php/fixtures/Models.php"),
+        read_fixture("src/languages/php/fixtures/Services.php"),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    // Classes
+    assert!(
+        has_reference(
+            &rows,
+            "User",
+            "src/languages/php/fixtures/Models.php",
+            "src/languages/php/fixtures/index.php"
+        ),
+        "expected reference to User class from index.php"
+    );
+    assert!(
+        has_reference(
+            &rows,
+            "Calculator",
+            "src/languages/php/fixtures/Services.php",
+            "src/languages/php/fixtures/index.php"
+        ),
+        "expected reference to Calculator class from index.php"
+    );
+
+    // Interface
+    assert!(
+        has_reference(
+            &rows,
+            "Repository",
+            "src/languages/php/fixtures/Models.php",
+            "src/languages/php/fixtures/Services.php"
+        ),
+        "expected reference to Repository interface from Services.php"
+    );
+}
+
+#[test]
+fn finds_php_class_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("Models.php"),
+            "<?php\nclass User {\n    public string $name;\n}\n\nclass Order {\n    public int $id;\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.php"),
+            "<?php\n$user = new User();\n$order = new Order();\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "User", "Models.php", "main.php"),
+        "expected reference to User class"
+    );
+    assert!(
+        has_reference(&rows, "Order", "Models.php", "main.php"),
+        "expected reference to Order class"
+    );
+}
+
+#[test]
+fn finds_php_interface_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("Interfaces.php"),
+            "<?php\ninterface Repository {\n    public function find(int $id);\n}\n\ninterface Service {\n    public function execute();\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("Implementation.php"),
+            "<?php\nclass UserRepo implements Repository {\n    public function find(int $id) { return null; }\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Repository", "Interfaces.php", "Implementation.php"),
+        "expected reference to Repository interface"
+    );
+}
+
+#[test]
+fn finds_php_trait_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("Traits.php"),
+            "<?php\ntrait Timestampable {\n    public function touch() {}\n}\n\ntrait Loggable {\n    public function log() {}\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("Model.php"),
+            "<?php\nclass User {\n    use Timestampable;\n    use Loggable;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Timestampable", "Traits.php", "Model.php"),
+        "expected reference to Timestampable trait"
+    );
+    assert!(
+        has_reference(&rows, "Loggable", "Traits.php", "Model.php"),
+        "expected reference to Loggable trait"
+    );
+}
+
+#[test]
+fn finds_php_enum_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("Enums.php"),
+            "<?php\nenum Status {\n    case Active;\n    case Inactive;\n}\n\nenum Priority: int {\n    case Low = 1;\n    case High = 2;\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("Model.php"),
+            "<?php\nclass Task {\n    public Status $status;\n    public Priority $priority;\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Status", "Enums.php", "Model.php"),
+        "expected reference to Status enum"
+    );
+    assert!(
+        has_reference(&rows, "Priority", "Enums.php", "Model.php"),
+        "expected reference to Priority enum"
+    );
+}
+
+#[test]
+fn finds_php_function_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("helpers.php"),
+            "<?php\nfunction add(int $a, int $b): int {\n    return $a + $b;\n}\n\nfunction multiply(int $a, int $b): int {\n    return $a * $b;\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.php"),
+            "<?php\n$sum = add(1, 2);\n$product = multiply(3, 4);\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "add", "helpers.php", "main.php"),
+        "expected reference to add function"
+    );
+    assert!(
+        has_reference(&rows, "multiply", "helpers.php", "main.php"),
+        "expected reference to multiply function"
+    );
+}
+
+#[test]
+fn finds_php_const_definitions() {
+    let files = vec![
+        (
+            PathBuf::from("constants.php"),
+            "<?php\nconst MAX_SIZE = 100;\nconst DEFAULT_NAME = 'unnamed';\n".to_string(),
+        ),
+        (
+            PathBuf::from("main.php"),
+            "<?php\n$size = MAX_SIZE;\n$name = DEFAULT_NAME;\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "MAX_SIZE", "constants.php", "main.php"),
+        "expected reference to MAX_SIZE constant"
+    );
+    assert!(
+        has_reference(&rows, "DEFAULT_NAME", "constants.php", "main.php"),
+        "expected reference to DEFAULT_NAME constant"
+    );
+}
+
+#[test]
+fn finds_php_types_in_namespace() {
+    let files = vec![
+        (
+            PathBuf::from("Models.php"),
+            "<?php\nnamespace App\\Models;\n\nclass Customer {\n    public string $name;\n}\n".to_string(),
+        ),
+        (
+            PathBuf::from("Service.php"),
+            "<?php\nnamespace App\\Services;\n\nuse App\\Models\\Customer;\n\nclass CustomerService {\n    public function get(): Customer { return new Customer(); }\n}\n".to_string(),
+        ),
+    ];
+
+    let rows = cruxlines_from_inputs(files, None);
+
+    assert!(
+        has_reference(&rows, "Customer", "Models.php", "Service.php"),
+        "expected reference to Customer class in namespace"
+    );
+}
